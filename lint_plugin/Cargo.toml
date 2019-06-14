@@ -1,0 +1,31 @@
+[package]
+name = "liquid"
+version = "0.1.0"
+authors = ["fan-tom <lokomot476@gmail.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["dylib", "rlib"]
+plugin = true
+
+[dependencies]
+failure = "0.1"
+itertools = "0.8"
+lazy_static = "1.3"
+pest = "2.1"
+pest_derive = "2.1"
+rayon = "1.0"
+#rustproof = { git = "https://github.com/Rust-Proof/rustproof.git" }
+z3 = "0.3"
+
+[target.'cfg(NOT_A_PLATFORM)'.dependencies]
+rustc = {path = "../../rust/src/librustc"}
+rustc_data_structures = {path = "../../rust/src/librustc_data_structures"}
+rustc_plugin = {path = "../../rust/src/librustc_plugin"}
+rustc_mir = {path = "../../rust/src/librustc_mir"}
+syntax = {path = "../../rust/src/libsyntax"}
+syntax_pos = {path = "../../rust/src/libsyntax_pos"}
+
+[features]
+# used in example to enable plugin invocation
+liquid = []

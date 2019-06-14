@@ -1,0 +1,14 @@
+#[package]
+#name = "liquid_rust_example"
+#version = "0.1.0"
+#authors = ["alex.g <alex.g@spryteam.io>"]
+#edition = "2018"
+#
+#[dependencies.liquid]
+#path = "../lint_plugin"
+#optional = true
+
+#[features]
+#liquid = ["liquid"]
+
+

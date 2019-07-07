@@ -69,8 +69,8 @@ The current answers are:
      ```
      
      After we get annotation we need to parse restriction, typecheck it and translate to SMT expression.
-     The attribute as given as path (require or ensure above) + TokenStream of the rest.
-     Currently I want to convert TokenStream to string and parse it with Pest parser library.
+     The attribute is given as path (**require** or **ensure** above) + TokenStream of the rest.
+     Currently I want to convert TokenStream to string and parse it with Pest(or rust-peg) parser.
      Question here is to discover what are all possible syntax constructs we may and want to support.
      
  2) Current approach of analyzing Rust code is to use Rust compiler lint infrastructure and 
@@ -78,17 +78,21 @@ The current answers are:
  
     The problem here is that this representation is very "high-level", because there are high-level constructs here,
     such as pattern matching, method calls, and so on. Ideally we want representation, where all high-level
-    constructs are lowered to assignments (SSA?) and function calls. There is such representation in compiler,
+    constructs are lowered to assignments (SSA?) and function calls. ~~There is such representation in compiler,
     called MIR, but it seems that there is no such phase in linting where we work with MIR.
     Generally speaking, we need to find all assignments to refined variables, that may come from
     actual assignment, initialization, function call (actual parameters assigned to formal parameters) and
-    function return (result expression is assigned to implicit result variable).
+    function return (result expression is assigned to implicit result variable).~~
+    We can easily get MIR of function or constexpr if we know substitution of all type variables within that fun/const.
+    It means however that we cannot analyze generic functions in abstract, only when they are called from monomorphized function.
+    Possible approach here may be to maintain map from (<function id>, <type substitution>) -> <precondition + postcondition>
+    in LintPass and query for it any time we want to refine function call from inside another function.
     
     How to check that restrictions required by function argument refined type is satisfied?
     We need to analyze what values actual argument may be equal to(we call them refinements), and pass them as preconditions
     to SMT solver.
     How to collect that refinements?
-    Refinements may come from assignment of refined variable, if check, match, reachability analysis
+    Refinements may come from assignment of refined variable, if-check, match, reachability analysis
     ```rust
         let x = ...;
         if x == 5 {
@@ -104,6 +108,7 @@ The current answers are:
     cannot construct them by hands. rsmt2 has no AST type, but requires to provide type
     that may be converted to SMT solver predicate string and another type to parse SMT output
     (model) from string.
+    There exists rustproof-libsmt that seems appropriate for our needs
 
 **Links**
 

@@ -1,0 +1,55 @@
+use super::*;
+
+ //float -> f64 = n:$(int ("." [0-9]*)? (^"e" int)?) {n.parse().unwrap()}
+
+ int -> &'input str = $(("+" / "-")? [0-9]+)
+ pub integer -> u64 = n:int {n.parse().unwrap()}
+
+ pub ident -> &'input str = $([_a-zA-Z][_a-zA-Z0-9]*)
+
+ arith_operator = add / sub / mul / div
+ add =  _ "+" _
+ sub =  _ "-" _
+ mul =  _ "*" _
+ div =  _ "/" _
+
+ pub term -> Expr = n:integer {Expr::Const(Const::Int{bits:n as u128, size: 64})} / i:ident {Expr::Var(i.to_string())} / "(" _ e:arith_expr _ ")" {e}
+
+ pub arith_expr -> Expr = op:#infix<term> {
+	#L x add y { Expr::BinaryOp(BinOp::Add, box x, box y)}
+	   x sub y { Expr::BinaryOp(BinOp::Sub, box x, box y)}
+	#L x mul y { Expr::BinaryOp(BinOp::Mul, box x, box y)}
+	   x div y { Expr::BinaryOp(BinOp::Div, box x, box y)}
+	//#R x "^" y { x.pow(y as u32) }
+ } {op} / t:term {t}
+
+ pub rel_operator -> BinOp = eq / le / lt / ge / gt / neq
+ eq -> BinOp = _ "==" _ {BinOp::Eq}
+ neq -> BinOp = _ "!=" _ {BinOp::Ne}
+ lt -> BinOp = _ "<" _ {BinOp::Lt}
+ le -> BinOp = _ "<=" _ {BinOp::Le}
+ gt -> BinOp = _ ">" _ {BinOp::Gt}
+ ge -> BinOp = _ ">=" _ {BinOp::Ge}
+
+ pub relation -> Expr = lhs:arith_expr op:rel_operator rhs:arith_expr {Expr::BinaryOp(op, box lhs, box rhs)} / a:arith_expr {a}
+
+ bool_expr -> Expr = "true" {Expr::r#true()} / "false" {Expr::r#false()} / "!" e:bool_expr {Expr::not(e)} / r:relation {r}
+
+ log_operator = and / or / imp / equiv
+ and = _ "&&" _
+ or = _ "||" _
+ imp = _ "=>" _
+ equiv = _ "<=>" _
+
+ predicate_binop -> Expr = #infix<bool_expr> {
+   #R lhs equiv rhs {Expr::BinaryOp(BinOp::Equiv, box lhs, box rhs)}
+      lhs imp rhs {Expr::BinaryOp(BinOp::Imp, box lhs, box rhs)}
+   #R lhs or rhs {Expr::BinaryOp(BinOp::Or, box lhs, box rhs)}
+      lhs and rhs {Expr::BinaryOp(BinOp::And, box lhs, box rhs)}
+}
+
+ pub predicate -> (&'input str, Expr) = v:ident _ ":" _ e:(predicate_binop / bool_expr) {(v, e)}
+
+ pub restrictions -> Vec<(&'input str, Expr)> = "(" _ v:(predicate ** (_ "," _)) _ ")" {v}
+
+ _ = #quiet<[ \n\t]*>

@@ -85,7 +85,7 @@ The current answers are:
     function return (result expression is assigned to implicit result variable).~~
     We can easily get MIR of function or constexpr if we know substitution of all type variables within that fun/const.
     It means however that we cannot analyze generic functions in abstract, only when they are called from monomorphized function.
-    Possible approach here may be to maintain map from (<function id>, <type substitution>) -> <precondition + postcondition>
+    Possible approach here may be to maintain map from (`<function id>`, `<type substitution>`) -> <precondition + postcondition>
     in LintPass and query for it any time we want to refine function call from inside another function.
     
     How to check that restrictions required by function argument refined type is satisfied?
@@ -116,3 +116,21 @@ The current answers are:
 * Liquid Haskell project, the most mature implementation of Liquid Types: https://ucsd-progsys.github.io/liquidhaskell-blog/
 * Another attempt to implement refinement types for Rust code: https://github.com/Rust-Proof/rustproof/
 (seems isn't maintained and doesn't compile as of May 2019)
+
+19.12.2019
+
+Currently I decided to analyze MIR in LatePass, deferring polymorphic functions analysis to call sites.
+Notes about original paper:
+* We don't need to perform HM type inference as we already have type information from rust compiler
+* We don't need (sure? what about closures, including as arguments?) to handle function types.
+* We don't need to infer types of functions as our analysis is local, we don't infer liquid types globally,
+the same way rust does it. So we only must check explicitly provided type restrictions.
+* We cannot analyze polymorphic functions alone, as we cannot get MIR without type substitutions, so we defer analysis
+of them until they are called and we can get their MIR. It may be very inefficient, as a lot of rust code uses
+generics, but we can cache analysis results using pair of (function id, type arguments) as key.
+So we don't need the notion of 'type schema' (all our schemas are monotypes)
+* Original paper describes algorithms using functional nature of analyzed language, i.e program consists of declarations
+and expressions. There is no notion of expression in MIR, however it seems that we may replace it with notion of
+SSA variable, that has type as once-assigned value. Environment of each that assignment consists of all the variables,
+introduced earlier in that block or any of its predecessors, whereas in functional language each expr is in another expression and
+there is notion of 'sibling' expressions.

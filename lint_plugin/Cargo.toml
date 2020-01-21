@@ -14,17 +14,31 @@ itertools = "0.8"
 lazy_static = "1.3"
 pest = "2.1"
 pest_derive = "2.1"
+peg = { version = "0.6" }
+take_mut = "0.2.2"
+maplit = "1.0.2"
+
+#peg-syntax-ext = "0.5"
+
 rayon = "1.0"
 #rustproof = { git = "https://github.com/Rust-Proof/rustproof.git" }
 z3 = "0.3"
+rustproof-libsmt = { git = "https://github.com/bpowers/libsmt.rs", rev = "2496a3e638f5" }
+derive_more = "0.15"
 
 [target.'cfg(NOT_A_PLATFORM)'.dependencies]
 rustc = {path = "../../rust/src/librustc"}
 rustc_data_structures = {path = "../../rust/src/librustc_data_structures"}
-rustc_plugin = {path = "../../rust/src/librustc_plugin"}
+#rustc_plugin = { path = "../../rust/src/librustc_plugin/deprecated" } # To get this in the sysroot
+#rustc_plugin_impl = {path = "../../rust/src/librustc_plugin"}
+rustc_driver = {path = "../../rust/src/librustc_driver"}
 rustc_mir = {path = "../../rust/src/librustc_mir"}
+rustc_target = {path = "../../rust/src/librustc_target"}
 syntax = {path = "../../rust/src/libsyntax"}
 syntax_pos = {path = "../../rust/src/libsyntax_pos"}
+
+#[build-dependencies]
+#peg = { version = "0.5" }
 
 [features]
 # used in example to enable plugin invocation

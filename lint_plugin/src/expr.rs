@@ -1,39 +1,89 @@
-use rustc::mir::{self, Operand, Local};
+use rustc::{
+    mir::{self, Local, Operand, Place},
+    ty::{TyKind, Const as RustConst},
+};
+use rustc::mir::Constant;
+use rustc_target::abi::Size;
+use derive_more::*;
+use crate::refinable_entity::RefinableEntity;
+use rustc::hir::def_id::DefId;
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum BinOp {
+    #[display(fmt = "+")]
     Add,
+    #[display(fmt = "_")]
     Sub,
+    #[display(fmt = "*")]
     Mul,
+    #[display(fmt = "/")]
     Div,
+    #[display(fmt = "<")]
     Lt,
+    #[display(fmt = "<=")]
     Le,
+    #[display(fmt = "=")]
     Eq,
+    #[display(fmt = ">")]
     Gt,
+    #[display(fmt = ">=")]
     Ge,
-    Ne,
+//    #[display(fmt = "!=")]
+//    Ne,
     // for enum variant
-    Is
+    #[display(fmt = "is")]
+    Is,
+    // to be used only in annotations
+    #[display(fmt = "=>")]
+    Imp,
+    // is it the same as Eq?
+    #[display(fmt = "<=>")]
+    Equiv,
+    #[display(fmt = "||")]
+    Or,
+    #[display(fmt = "&&")]
+    And,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum UnaryOp {
     // !<bool> or !<bits>
+    #[display(fmt = "!")]
     Not,
     // -
-    Neg
+    #[display(fmt = "-")]
+    Neg,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Display)]
 pub enum Const {
+    #[display(fmt = "{}", _0)]
     Bool(bool),
+    #[display(fmt = "{}", bits)]
     Int {
-        size: u8,
+        // size in bits
+        size: u64,
         bits: u128,
     },
+    #[display(fmt = "{}", bits)]
     UInt {
-        size: u8,
+        // size in bits
+        size: u64,
         bits: u128,
+    },
+}
+
+impl Const {
+    pub fn try_to_i64(&self) -> Option<i64> {
+        match self {
+            Const::Int { size, bits } if size <= &64 => {
+                Some(*bits as i64)
+            },
+            Const::UInt { size, bits } if size < &64 => {
+                Some(*bits as i64)
+            },
+            _ => None,
+        }
     }
 }
 
@@ -44,7 +94,9 @@ impl From<mir::BinOp> for BinOp {
             mir::BinOp::Sub => BinOp::Sub,
             mir::BinOp::Mul => BinOp::Mul,
             mir::BinOp::Div => BinOp::Div,
-            _ => unimplemented!(),
+            mir::BinOp::Lt => BinOp::Lt,
+            mir::BinOp::Gt => BinOp::Gt,
+            o => unimplemented!("{:?}", o),
         }
     }
 }
@@ -59,36 +111,109 @@ impl From<mir::UnOp> for UnaryOp {
 }
 
 /// Not used yet
-pub enum Predicate {
+pub enum Predicate<'tcx> {
     Const(Const),
-    Rel(Expr)
+    Rel(Expr<'tcx>),
 }
 
-#[derive(Clone, Debug)]
-pub enum Expr {
+#[derive(Clone, Debug, Eq, PartialEq, Display)]
+pub enum Expr<'tcx> {
+    #[display(fmt = "v")]
     V,
-    Var(Local),
+    #[display(fmt = "{:?}", _0)]
+    Var(RefinableEntity<'tcx>),
+    #[display(fmt = "{}", _0)]
     Const(Const),
-    UnaryOp(UnaryOp, Box<Expr>),
-    BinaryOp(BinOp, Box<Expr>, Box<Expr>)
+    #[display(fmt = "{} {}", _0, _1)]
+    UnaryOp(UnaryOp, Box<Expr<'tcx>>),
+    #[display(fmt = "{} {} {}", _1, _0, _2)]
+    BinaryOp(BinOp, Box<Expr<'tcx>>, Box<Expr<'tcx>>),
 }
 
-impl Expr {
+impl<'tcx> Expr<'tcx> {
     pub fn r#true() -> Self {
         Expr::Const(Const::Bool(true))
     }
 
-}
+    pub fn from_place(place: Place<'tcx>, fun_id: DefId) -> Self {
+        Self::Var(RefinableEntity::from_place(place, fun_id))
+    }
 
-impl<'tcx> From<Operand<'tcx>> for Expr {
-    fn from(op: Operand) -> Self {
+    pub fn from_operand(op: Operand<'tcx>, fun_id: DefId) -> Self {
         match op {
-            Operand::Copy(e) | Operand::Move(e) => {
-                unimplemented!()
-            },
-            Operand::Constant(_) => unimplemented!()
+            Operand::Copy(place) | Operand::Move(place) => {
+                Expr::from_place(place, fun_id)
+            }
+            Operand::Constant(c) => c.literal.into()
         }
     }
 }
 
-//impl TryFrom
+//impl<'tcx> From<Operand<'tcx>> for Expr<'tcx> {
+//    fn from(op: Operand<'tcx>) -> Self {
+//        match op {
+//            Operand::Copy(e) | Operand::Move(e) => {
+//                Expr::Var(e)
+//            }
+//            Operand::Constant(c) => c.literal.into()
+//        }
+//    }
+//}
+
+impl From<&RustConst<'_>> for Expr<'_> {
+    fn from(c: &RustConst) -> Self {
+        let cnst = match &c.ty.kind {
+            TyKind::Bool => Const::Bool(c.val.try_to_scalar().unwrap().to_bool().unwrap()),
+            TyKind::Uint(ty) => {
+                let size = Size::from_bits(ty.bit_width().unwrap() as u64);
+                let bits = c.val.try_to_bits(size).unwrap();
+                Const::Int { bits, size: size.bits() }
+            }
+            TyKind::Int(ty) => {
+                let size = Size::from_bits(ty.bit_width().unwrap() as u64);
+                let bits = c.val.try_to_bits(size).unwrap();
+                Const::Int { bits, size: size.bits() }
+            }
+            t => unimplemented!("{:?}", t)
+        };
+        Expr::Const(cnst)
+    }
+}
+
+mod visitor {
+    use crate::visitor::{Visitable, Visitor};
+    use super::*;
+
+    impl Visitable for Expr<'_> {
+        fn accept<'s>(&'s self, v: &mut impl Visitor<'s, Self>) {
+            match self {
+                Expr::UnaryOp(_, expr) => expr.accept(v),
+                Expr::BinaryOp(_, lhs, rhs) => {
+                    lhs.accept(v);
+                    rhs.accept(v);
+                },
+                _ => {}
+            }
+            v.visit(self);
+        }
+    }
+}
+
+mod folder {
+    use crate::folder::{Foldable, Folder};
+    use super::*;
+
+    impl<'tcx> Foldable for Expr<'tcx> {
+        fn accept(self, v: &mut impl Folder<Self>) -> Expr<'tcx> {
+            let self_folded = match self {
+                Expr::UnaryOp(op, expr) => Expr::UnaryOp(op, box expr.accept(v)),
+                Expr::BinaryOp(op, lhs, rhs) => Expr::BinaryOp(
+                    op,
+                    box lhs.accept(v),
+                    box rhs.accept(v)),
+                e => e,
+            };
+            v.fold(self_folded)
+        }
+    }
+}

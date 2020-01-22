@@ -580,10 +580,10 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
             Rvalue::Len(_) => unimplemented!("rvalue len"),
             Rvalue::Cast(_, _, _) => unimplemented!("cast"),
 
-            Rvalue::BinaryOp(op, ref lhs, ref rhs) |
             // TODO: handle checked op properly, as it returns tuple (bool, ty)
-            Rvalue::CheckedBinaryOp(op, ref lhs, ref rhs) => {
-                let oper = Expr::BinaryOp(op.into(), box Expr::from_operand(lhs.clone(), self.def_id), box Expr::from_operand(rhs.clone(), self.def_id));
+            | Rvalue::CheckedBinaryOp(op, ref lhs, ref rhs) => unimplemented!("checked op"),
+            | Rvalue::BinaryOp(op, ref lhs, ref rhs) => {
+                let oper = Expr::binary_op(op.into(), Expr::from_operand(lhs.clone(), self.def_id), Expr::from_operand(rhs.clone(), self.def_id));
                 let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box oper);
                 let pred = Predicate::from_expr(expr);
                 let lhs_ty = lhs.ty(self.mir.local_decls(), self.tcx);

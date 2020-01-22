@@ -28,8 +28,9 @@ pub enum BinOp {
     Gt,
     #[display(fmt = ">=")]
     Ge,
-//    #[display(fmt = "!=")]
-//    Ne,
+    // used only to convert from mir::BinOp, transformed to Expr::UnaryOp(Not, Expr::BinaryOp(Eq, ...
+    #[display(fmt = "!=")]
+    Ne,
     // for enum variant
     #[display(fmt = "is")]
     Is,
@@ -96,6 +97,7 @@ impl From<mir::BinOp> for BinOp {
             mir::BinOp::Div => BinOp::Div,
             mir::BinOp::Lt => BinOp::Lt,
             mir::BinOp::Gt => BinOp::Gt,
+            mir::BinOp::Ne => BinOp::Ne,
             o => unimplemented!("{:?}", o),
         }
     }
@@ -133,6 +135,14 @@ pub enum Expr<'tcx> {
 impl<'tcx> Expr<'tcx> {
     pub fn r#true() -> Self {
         Expr::Const(Const::Bool(true))
+    }
+
+    pub fn binary_op(op: BinOp, lhs: Expr<'tcx>, rhs: Expr<'tcx>) -> Self {
+        if op == BinOp::Ne {
+            Expr::UnaryOp(UnaryOp::Not, box Expr::binary_op(BinOp::Eq, lhs, rhs))
+        } else {
+            Expr::BinaryOp(op, box lhs, box rhs)
+        }
     }
 
     pub fn from_place(place: Place<'tcx>, fun_id: DefId) -> Self {

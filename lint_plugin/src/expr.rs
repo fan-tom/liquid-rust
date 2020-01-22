@@ -60,13 +60,13 @@ pub enum UnaryOp {
 pub enum Const {
     #[display(fmt = "{}", _0)]
     Bool(bool),
-    #[display(fmt = "{}", bits)]
+    #[display(fmt = "{}", r#"self.try_to_i64().map(|n| n.to_string()).unwrap_or(format!("<{}>({} bits)", bits, size))"#)]
     Int {
         // size in bits
         size: u64,
         bits: u128,
     },
-    #[display(fmt = "{}", bits)]
+    #[display(fmt = "{}", r#"self.try_to_i64().map(|n| n.to_string()).unwrap_or(format!("<{}>({} bits)", bits, size))"#)]
     UInt {
         // size in bits
         size: u64,
@@ -77,8 +77,20 @@ pub enum Const {
 impl Const {
     pub fn try_to_i64(&self) -> Option<i64> {
         match self {
-            Const::Int { size, bits } if size <= &64 => {
-                Some(*bits as i64)
+            Const::Int { size, bits } => {
+                Some(
+                    if size <= &8 {
+                        (*bits as i8) as i64
+                    } else if size <= &16 {
+                        (*bits as i16) as i64
+                    } else if size <= &32 {
+                        (*bits as i32) as i64
+                    } else if size <= &64 {
+                        *bits as i64
+                    } else {
+                        None?
+                    }
+                )
             },
             Const::UInt { size, bits } if size < &64 => {
                 Some(*bits as i64)

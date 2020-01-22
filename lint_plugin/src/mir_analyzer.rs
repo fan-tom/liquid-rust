@@ -282,17 +282,23 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
                 let target_idx = targets.iter().find_position(|&&bb| bb == target_block).unwrap().0;
                 let value_size = self.get_scalar_size(switch_ty);
                 let discr_local = self.place_from_operand(&discr);
+                let cnst = |value| match &switch_ty.kind {
+                    TyKind::Bool => Ok(Const::Bool(value!=0)),
+                    TyKind::Int(_) => Ok(Const::Int { size: value_size, bits: value }),
+                    TyKind::Uint(_) => Ok(Const::UInt { size: value_size, bits: value }),
+                    t => Err(failure::format_err!("Invalid switch ty: {:?}", t))
+                };
                 if let Some(&value) = values.get(target_idx) {
-                    let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::Const(Const::Int { size: value_size, bits: value }));
-                    let refinement = Refinement::new(switch_ty.kind.clone(), Predicate::from_expr(expr));
+                    let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::Const(cnst(value)?));
+                    let refinement = Refinement::new(switch_ty.kind.clone(), expr.into());
                     base_lqt.refine(RefinableEntity::from_place(discr_local.clone(), self.def_id), refinement);
                 } else {
                     // otherwise discr is not equal to any of values
-                    values.iter().for_each(|&v| {
-                        let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::Const(Const::Int { size: value_size, bits: v }));
+                    for &v in values.iter() {
+                        let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::Const(cnst(v)?));
                         let refinement = Refinement::new(switch_ty.kind.clone(), Predicate::from_expr(expr).negated());
                         base_lqt.refine(RefinableEntity::from_place(discr_local.clone(), self.def_id), refinement);
-                    });
+                    }
                 };
                 base_lqt
             }

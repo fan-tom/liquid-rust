@@ -60,6 +60,7 @@ use crate::{
     visitor::Visitable,
 };
 use crate::refinements_registry::{RestrictionRegistry, FunctionRestrictions};
+use crate::restriction_extractor::check_requires_wf;
 
 //use parser::Rule;
 
@@ -82,6 +83,7 @@ mod name_registry;
 mod folder;
 mod utils;
 mod error;
+mod restriction_extractor;
 
 declare_lint!(LIQUID_RUST_LINT, Deny, "Liquid rust");
 
@@ -276,7 +278,7 @@ impl<'a, 'tcx> rustc::lint::LateLintPass<'a, 'tcx> for LatePass {
                     .args_iter()
                     .filter_map(|i| Some(mir.local_decls[i].name?.as_str().to_string()))
                     .collect::<Vec<_>>();
-                if let Err(e) = self.check_requires_wf(&function_arguments_names, &requires) {
+                if let Err(e) = check_requires_wf(&function_arguments_names, &requires) {
                     println!("Error in requirements");
                     cx.span_lint(LIQUID_RUST_LINT, span,
                                  &e.into_iter()
@@ -364,34 +366,5 @@ impl LatePass {
         Ok(())
     }
 
-    fn check_requires_wf<'e>(&self, function_arguments_names: &[impl AsRef<str>], requires: impl IntoIterator<Item=(&'e String, &'e Expr)>) -> Result<(), HashMap<&'e str, HashSet<&'e str>>> {
-        let mut unknown_vars = HashMap::<_, HashSet<_>>::new();
-        requires
-            .into_iter()
-            .for_each(|(arg, expr)| {
-                println!("Checking requirement {}", expr);
-                expr.accept(&mut |e: &'e Expr| {
-                    println!("Visiting expr {}", e);
-                    if let Expr::Var(ref s) = e {
-                        println!("Checking var {} in requirement", s);
-                        if s != arg && !function_arguments_names
-                            .iter()
-                            .take_while(|a| a.as_ref() != arg)
-                            .any(|a| a.as_ref() == s.as_str()) {
-                            unknown_vars
-                                .entry(arg.as_str())
-                                .or_default()
-                                .insert(s.as_str());
-                        }
-                    }
-                });
-            });
-        println!("End checking requirements, unknown vars: {:?}", unknown_vars);
-        if unknown_vars.is_empty() {
-            Ok(())
-        } else {
-            Err(unknown_vars)
-        }
-    }
 //    fn check_restriction_wellformedness(&self, args: & [], restriction: & [Expr])
 }

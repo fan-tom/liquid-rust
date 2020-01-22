@@ -223,7 +223,7 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
                         size: unimplemented!(),
                         bits: variant_index.as_u32() as u128,
                     }));
-                    let predicate = Predicate::from_expr(expr);
+                    let predicate = expr.into();
                     let refinement = Refinement::new(place.ty(self.mir, self.tcx).ty.kind.clone(), predicate);
                     ctx.refine(RefinableEntity::from_place(place.clone(), self.def_id), refinement)
                 }
@@ -411,14 +411,14 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
                 Operand::Constant(box value) => {
                     ctx.refine(RefinableEntity::from_place(formal.into(), fun_id), Refinement::new(
                         value.literal.ty.kind.clone(),
-                        Predicate::from_expr(Expr::BinaryOp(BinOp::Eq, box Expr::V, box value.literal.into()))
+                        Expr::BinaryOp(BinOp::Eq, box Expr::V, box value.literal.into()).into()
                     )
                     )
                 }
                 Operand::Copy(value) | Operand::Move(value) => {
                     ctx.refine(RefinableEntity::from_place(formal.into(), fun_id), Refinement::new(
                         value.ty(&self.mir.local_decls, self.tcx).ty.kind.clone(),
-                        Predicate::from_expr(Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::from_place(value.clone(), self.def_id)))
+                        Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::from_place(value.clone(), self.def_id)).into()
                     ))
                 }
             }
@@ -570,7 +570,7 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
                     }
                     Operand::Constant(box c) => {
                         let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box c.literal.into());
-                        Refinement::new(c.literal.ty.kind.clone(), Predicate::from_expr(expr))
+                        Refinement::new(c.literal.ty.kind.clone(), expr.into())
 //                        unimplemented!("constant assign")
                     }
                 }
@@ -585,7 +585,7 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
             | Rvalue::BinaryOp(op, ref lhs, ref rhs) => {
                 let oper = Expr::binary_op(op.into(), Expr::from_operand(lhs.clone(), self.def_id), Expr::from_operand(rhs.clone(), self.def_id));
                 let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box oper);
-                let pred = Predicate::from_expr(expr);
+                let pred = expr.into();
                 let lhs_ty = lhs.ty(self.mir.local_decls(), self.tcx);
                 let rhs_ty = rhs.ty(self.mir.local_decls(), self.tcx);
                 Refinement::new(op.ty(self.tcx, lhs_ty, rhs_ty).kind.clone(), pred)
@@ -597,7 +597,7 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
             Rvalue::UnaryOp(op, ref rhs) => {
                 let oper = Expr::UnaryOp(op.into(), box Expr::from_operand(rhs.clone(), self.def_id));
                 let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box oper);
-                let pred = Predicate::from_expr(expr);
+                let pred = expr.into();
                 let rhs_ty = rhs.ty(self.mir.local_decls(), self.tcx);
 //                let op_ty = match op {
 //                    UnOp::Not => &self.tcx.types.bool.kind,

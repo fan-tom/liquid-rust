@@ -572,7 +572,10 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
                 match oprnd {
                     Operand::Copy(ref p) | Operand::Move(ref p) => {
                         // we get rid of intermediate x=y, directly copy y's refinement to x
-                        ctx.get_refinement(&RefinableEntity::from_place(p.clone(), self.def_id))
+//                        ctx.get_refinement(&RefinableEntity::from_place(p.clone(), self.def_id))
+                        // we cannot just copy rhs refinement to lhs, as rhs may be referred in path predicate
+                        let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::from_place(p.clone(), self.def_id));
+                        Refinement::new(p.ty(self.mir.local_decls(), self.tcx).ty.kind.clone(), expr.into())
                     }
                     Operand::Constant(box c) => {
                         let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box c.literal.into());

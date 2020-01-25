@@ -2,16 +2,19 @@ use rustc::hir::def_id::DefId;
 use rustc::ty::subst::{SubstsRef, GenericArg};
 use std::collections::HashMap;
 use crate::restriction_expr::{Expr as RestrictionExpr, Const};
-use std::collections::hash_map::DefaultHasher;
+use std::collections::hash_map::{DefaultHasher, Entry};
 use rustc::ty::{List, TyCtxt, Instance};
 use std::hash::{Hash, Hasher};
 use failure::Error;
+use crate::restriction_extractor::extract_restrictions;
+use std::cell::RefCell;
 
 pub type SubstHash = u64;
 
 pub type RestrictionMap = HashMap<String, RestrictionExpr>;
 
 /// Type, that represents function preconditions as HashMap from arguments to restrictions and restriction for return value
+#[derive(Debug)]
 pub struct FunctionRestrictions(RestrictionMap, RestrictionExpr);
 
 impl FunctionRestrictions {
@@ -31,8 +34,8 @@ impl FunctionRestrictions {
 pub trait RestrictionRegistry {
     fn add(&mut self, def_id: DefId, refinement: FunctionRestrictions) -> Option<FunctionRestrictions>;
     fn add_generic(&mut self, def_id: DefId, substs: SubstsRef, refinement: FunctionRestrictions) -> Option<FunctionRestrictions>;
-    fn function_refinement(&self, fun_id: DefId) -> Result<&FunctionRestrictions, Error>;
-    fn function_refinement_generic(&self, fun_id: DefId, substs: SubstsRef) -> Result<&FunctionRestrictions, Error>;
+    fn get_or_extract_restrictions(&mut self, fun_id: DefId, tcx: TyCtxt) -> Result<&FunctionRestrictions, Error>;
+    fn get_or_extract_restrictions_generic(&mut self, fun_id: DefId, substs: SubstsRef, tcx: TyCtxt) -> Result<&FunctionRestrictions, Error>;
 }
 
 impl<T: RestrictionRegistry> RestrictionRegistry for &mut T {
@@ -44,12 +47,12 @@ impl<T: RestrictionRegistry> RestrictionRegistry for &mut T {
         (**self).add_generic(def_id, substs, refinement)
     }
 
-    fn function_refinement(&self, fun_id: DefId) -> Result<&FunctionRestrictions, Error> {
-        (**self).function_refinement(fun_id)
+    fn get_or_extract_restrictions(&mut self, fun_id: DefId, tcx: TyCtxt) -> Result<&FunctionRestrictions, Error> {
+        (**self).get_or_extract_restrictions(fun_id,tcx)
     }
 
-    fn function_refinement_generic(&self, fun_id: DefId, substs: SubstsRef) -> Result<&FunctionRestrictions, Error> {
-        (**self).function_refinement_generic(fun_id, substs)
+    fn get_or_extract_restrictions_generic(&mut self, fun_id: DefId, substs: SubstsRef, tcx: TyCtxt) -> Result<&FunctionRestrictions, Error> {
+        (**self).get_or_extract_restrictions_generic(fun_id, substs, tcx)
     }
 }
 
@@ -78,16 +81,19 @@ impl RestrictionRegistry for Restricter {
         self.restrictions.insert((def_id, Some(hash)), refinement)
     }
 
-    fn function_refinement(&self, fun_id: DefId) -> Result<&FunctionRestrictions, Error> {
+    fn get_or_extract_restrictions(&mut self, fun_id: DefId, tcx: TyCtxt) -> Result<&FunctionRestrictions, Error> {
 //        unimplemented!();
-//        self.restrictions.entry((fun_id, None)).or_insert_with(|| {
-//            let mir = tcx.instance_mir(Instance::mono(tcx, fun_id).def);
-//
-//        })
-        self.restrictions.get(&(fun_id, None)).ok_or(failure::err_msg("On demand function refining not implemented"))
+        let entry = self.restrictions.entry((fun_id, None));
+        if let Entry::Occupied(res) = entry {
+            Ok(res.into_mut())
+        } else {
+            let (restrictions, mir) = extract_restrictions(tcx, fun_id);
+            mir?;
+            Ok(entry.insert(restrictions).into_mut())
+        }
     }
 
-    fn function_refinement_generic(&self, fun_id: DefId, substs: SubstsRef) -> Result<&FunctionRestrictions, Error> {
+    fn get_or_extract_restrictions_generic(&mut self, fun_id: DefId, substs: SubstsRef, tcx: TyCtxt) -> Result<&FunctionRestrictions, Error> {
         unimplemented!()
     }
 }

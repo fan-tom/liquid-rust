@@ -36,8 +36,7 @@ use crate::folder::Foldable;
 use crate::refinable_entity::RefinableEntity;
 use maplit::*;
 use crate::error::TypeError;
-
-const ANN_RET_NAME: &str = "return";
+use crate::utils::ANN_RET_NAME;
 
 type VarNameTy = String;
 
@@ -74,6 +73,7 @@ pub(super) struct MirAnalyzer<'tcx, R: RestrictionRegistry> {
     block_inference_cache: RefCell<HashMap<BasicBlock, InferenceCtx<'tcx>>>,
     /// registry to get globals/functions refinements from
     restriction_registry: R,
+    /// all type errors, collected during body check
     errors: Vec<TypeError>,
 }
 
@@ -307,15 +307,18 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
                     // TODO: may be target_block == cleanup
                     assert_eq!(target_block, target);
                     if let &Operand::Constant(box Constant { literal: RustConst { ty: TyS { kind: TyKind::FnDef(func_def, subst), .. }, ..}, .. }) = func {
-                        if *func_def == self.def_id {
+                        let self_id = self.def_id;
+                        if *func_def == self_id {
                             unimplemented!("Recursive call analysis is not implemented");
                         }
-                        if let Some(descr) = self.check_function_call_precondition(*func_def, self.tcx.empty_substs_for_def_id(*func_def), args, base_lqt.clone())? {
+                        let tcx = self.tcx;
+                        if let Some(descr) = self.check_function_call_precondition(*func_def, tcx.empty_substs_for_def_id(*func_def), args, base_lqt.clone())? {
                             self.errors.push(TypeError::new(descr, terminator.source_info.span));
 //                            panic!("Found precondition violation");
                         }
+                        let self_body = self.mir;
                         let reft = self.function_refinement(*func_def)?;
-                        base_lqt.refine(RefinableEntity::from_place(dst.clone(), self.def_id), Refinement::new(dst.ty(self.mir.local_decls(), self.tcx).ty.kind.clone(), reft.post().fold(&mut RestrictionToExprConverter(self.mir, "return", *func_def))?.into()));
+                        base_lqt.refine(RefinableEntity::from_place(dst.clone(), self_id), Refinement::new(dst.ty(self_body.local_decls(), tcx).ty.kind.clone(), reft.post().fold(&mut RestrictionToExprConverter(self_body, "return", *func_def))?.into()));
                         // need to precondition refinements for arguments and postcondition refinements for destination
 //                        unimplemented!();
                         base_lqt
@@ -366,8 +369,8 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
         let pred_lqt: Vec<_> = if predecessors.is_empty() {
             let mut locals_init_lqt = self.init_locals_refinements();
             let self_refinement = self.self_refinement();
-            let self_precondition = self_refinement.pre();
-            let precond = self.preconditions_to_inference_ctx(self_precondition, self.mir, self.def_id)?;
+            let self_precondition = self_refinement.pre().clone();
+            let precond = self.preconditions_to_inference_ctx(&self_precondition, self.mir, self.def_id)?;
             locals_init_lqt.merge(precond);
             vec![locals_init_lqt]
         } else {
@@ -383,16 +386,16 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
         Ok(self.block_inference_cache.borrow_mut().entry(current_block).or_insert(val).clone())
     }
 
-    fn self_refinement(&self) -> &FunctionRestrictions {
+    fn self_refinement(&mut self) -> &FunctionRestrictions {
         // unwrap as we sure that current function is registered in registry
 //        unimplemented!();
-        self.restriction_registry.function_refinement(self.def_id).unwrap()
+        self.restriction_registry.get_or_extract_restrictions(self.def_id, self.tcx).unwrap()
     }
 
     /// Get function pre and postconditions
-    fn function_refinement(&self, func_id: DefId) -> Result<&FunctionRestrictions, failure::Error>{
+    fn function_refinement(&mut self, func_id: DefId) -> Result<&FunctionRestrictions, failure::Error>{
 //        unimplemented!();
-        self.restriction_registry.function_refinement(func_id)
+        self.restriction_registry.get_or_extract_restrictions(func_id, self.tcx)
     }
 
     fn preconditions_to_inference_ctx(&self, restrictions: &RestrictionMap, mir: &'tcx Body, fun_id: DefId) -> Result<InferenceCtx<'tcx>, failure::Error> {
@@ -437,10 +440,11 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
         // Argument is either constant or place
         // If it is place, its refinement already exists in ctx
         // If it is constant, we need to add refinement to corresponding formal argument of function
+        let tcx = self.tcx;
         let reft = self.function_refinement(func_def)?;
-        let fun_body = self.tcx.instance_mir(Instance::new(func_def, subst).def);
-        let precondition = reft.pre();
-        let mut need = self.preconditions_to_inference_ctx(precondition, fun_body, func_def)?;
+        let fun_body = tcx.instance_mir(Instance::new(func_def, subst).def);
+        let precondition = reft.pre().clone();
+        let mut need = self.preconditions_to_inference_ctx(&precondition, fun_body, func_def)?;
         let mut given = self.merge_ctx_with_args(ctx, args, fun_body, func_def);
         // Need to convert restriction map to refinement map, build Z3 expression and check its inverse to be not provable
         let bodies = hashmap!{self.def_id => self.mir, func_def => fun_body};

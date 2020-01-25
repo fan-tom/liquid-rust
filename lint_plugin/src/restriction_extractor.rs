@@ -9,8 +9,10 @@ use std::collections::{HashMap, HashSet};
 use crate::restriction_expr::Expr;
 use syntax::ast::Attribute;
 use crate::visitor::Visitable;
+use rustc::mir::{Body};
+use crate::utils::ANN_RET_NAME;
 
-pub fn extract_restrictions<'tcx>(tcx: TyCtxt<'tcx>, fun_id: DefId) -> Result<FunctionRestrictions, failure::Error> {
+pub fn extract_restrictions<'tcx>(tcx: TyCtxt<'tcx>, fun_id: DefId) -> (FunctionRestrictions, Result<&Body<'tcx>, failure::Error>) {
 //    let (requires, ensures): (Vec<_>, Vec<_>) = tcx.get_attrs(fun_id)
 //        .iter()
 //        .filter_map(|attr| {
@@ -69,9 +71,20 @@ pub fn extract_restrictions<'tcx>(tcx: TyCtxt<'tcx>, fun_id: DefId) -> Result<Fu
             println!("Requirements: {:?}", r);
             (r, e)
         }
-        (pre_err, post_err) => {
-            println!("Found errors in specs, exit");
-            return Err(failure::err_msg(pre_err.err().into_iter().chain(post_err.err()).map(|e| e.to_string()).join("\n")))
+        (Ok(pre), Err(post_err)) => {
+            println!("Found errors in postcondition syntax, exit");
+            return (FunctionRestrictions::new(pre, Default::default()), Err(post_err))
+        }
+        (Err(pre_err), Ok(post)) => {
+            println!("Found errors in precondition syntax, exit");
+            return (FunctionRestrictions::new(Default::default(), post.get(ANN_RET_NAME).cloned()), Err(pre_err))
+        }
+        (Err(pre_err), Err(post_err)) => {
+            println!("Found errors in postcondition and precondition syntaxes, exit");
+            return (
+                FunctionRestrictions::new(Default::default(), Default::default()),
+                Err(failure::format_err!("{}\n{}", pre_err, post_err))
+            )
         }
     };
     let mir = tcx.instance_mir(Instance::mono(tcx, fun_id).def);
@@ -79,20 +92,23 @@ pub fn extract_restrictions<'tcx>(tcx: TyCtxt<'tcx>, fun_id: DefId) -> Result<Fu
         .args_iter()
         .filter_map(|i| Some(mir.local_decls[i].name?.as_str().to_string()))
         .collect::<Vec<_>>();
-    if let Err(e) = check_requires_wf(&function_arguments_names, &requires) {
+     if let Err(e) = check_requires_wf(&function_arguments_names, &requires) {
         println!("Error in requirements");
-        Err(failure::err_msg(
-                     e.into_iter()
-                         .map(|(a, u)| if u.is_empty() {
-                             format!("unknown variable in predicate: {}", a)
-                         } else {
-                             format!("unknown variables in predicate over {}: {}", a, u.into_iter().join(", "))
-                         })
-                         .join("\n")
-                         )
-        )
+         (
+             FunctionRestrictions::new(Default::default(), ensures.get(ANN_RET_NAME).cloned()),
+             Err(failure::err_msg(
+                 e.into_iter()
+                     .map(|(a, u)| if u.is_empty() {
+                         format!("unknown variable in predicate: {}", a)
+                     } else {
+                         format!("unknown variables in predicate over {}: {}", a, u.into_iter().join(", "))
+                     })
+                     .join("\n")
+             )
+             )
+         )
     } else {
-        Ok(FunctionRestrictions::new(requires, ensures.get("result").cloned()))
+         (FunctionRestrictions::new(requires, ensures.get("result").cloned()), Ok(mir))
     }
 }
 

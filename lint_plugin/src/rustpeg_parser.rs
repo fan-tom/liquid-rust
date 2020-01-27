@@ -65,7 +65,7 @@ peg::parser!{grammar restriction() for str {
     rule imp() -> BinOp = _ "=>" _ {BinOp::Imp}
     rule equiv() -> BinOp = _ "<=>" _ {BinOp::Equiv}
 
-    rule predicate_expr() -> Expr = precedence!{
+    pub rule predicate_expr() -> Expr = precedence!{
         lhs:@ equiv() rhs:(@) {Expr::BinaryOp(BinOp::Equiv, box lhs, box rhs)}
         lhs:@ imp() rhs:(@) {Expr::BinaryOp(BinOp::Imp, box lhs, box rhs)}
         --
@@ -84,8 +84,6 @@ peg::parser!{grammar restriction() for str {
         e:paren(<predicate_expr()>) {e}
     }
 
-//    rule predicate_expr() -> Expr = e:(predicate_binop() / bool_expr()) {e}
-
     pub rule predicate() -> (&'input str, Expr) = v:ident() _ ":" _ e:predicate_expr() {(v, e)}
 
     rule _restrictions() -> Vec<(&'input str, Expr)> = v:(predicate() ** (_ "," _)) {v}
@@ -102,15 +100,19 @@ peg::parser!{grammar restriction() for str {
 pub struct RestrictionParser;
 
 impl RestrictionParser {
-    pub fn parse(input: &str) -> Result<Vec<(&str, Expr)>, failure::Error> {
+    pub fn parse_preconditions(input: &str) -> Result<Vec<(&str, Expr)>, failure::Error> {
         Ok(restriction::restrictions(input)?)
+    }
+
+    pub fn parse_postconditions(input: &str) -> Result<Expr, failure::Error> {
+        Ok(restriction::predicate_expr(input)?)
     }
 }
 
 #[test]
 fn check_single() -> Result<(), failure::Error> {
     let pred = r#"("b: abc_d >30")"#;
-    let actual_expr = RestrictionParser::parse(pred)?;
+    let actual_expr = RestrictionParser::parse_preconditions(pred)?;
     let expected_expr = ("b", Expr::BinaryOp(BinOp::Gt, box Expr::Var("abc_d".into()), box Expr::Const(Const::Int{ bits: 30 as u128, size: 64})));
     assert_eq!(actual_expr, vec![expected_expr]);
     Ok(())
@@ -119,7 +121,7 @@ fn check_single() -> Result<(), failure::Error> {
 #[test]
 fn check_complex() -> Result<(), failure::Error> {
     let pred = r#"( "c:(a>30&&d==true)<=>(c!=!b)")"#;
-    let actual_expr = RestrictionParser::parse(pred)?;
+    let actual_expr = RestrictionParser::parse_preconditions(pred)?;
     let expected_expr = ("c",
                          Expr::BinaryOp(
                              BinOp::Equiv,

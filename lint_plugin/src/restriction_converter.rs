@@ -1,7 +1,8 @@
-use crate::restriction_expr::{Folder, Expr as RestrictionExpr};
+use crate::restriction_expr::{Expr as RestrictionExpr};
 use crate::expr::{UnaryOp, Const, BinOp, Expr};
 use rustc::mir::Body;
 use rustc::hir::def_id::DefId;
+use crate::restriction_expr::fold::Folder;
 
 pub struct RestrictionToExprConverter<'tcx, 'name>(pub &'tcx Body<'tcx>, pub &'name str, pub DefId);
 

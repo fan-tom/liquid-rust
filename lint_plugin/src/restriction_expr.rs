@@ -1,7 +1,6 @@
 pub use crate::expr::{UnaryOp, BinOp, Const, Expr as ParsedExpr};
 use derive_more::*;
 use crate::visitor::{Visitable, Visitor};
-pub use self::fold::Folder;
 
 #[derive(Clone, Debug, Eq, PartialEq, Display)]
 pub enum Expr {
@@ -47,7 +46,7 @@ impl Expr {
     }
 }
 
-mod fold {
+pub mod fold {
     use super::{Expr, UnaryOp, BinOp, Const};
     pub trait Folder<'e, T>
     {

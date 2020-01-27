@@ -60,7 +60,9 @@ use crate::{
     visitor::Visitable,
 };
 use crate::refinements_registry::{RestrictionRegistry, FunctionRestrictions};
-use crate::restriction_extractor::check_requires_wf;
+use crate::restriction_extractor::{check_requires_wf, extract_restrictions};
+use syntax::ast::{FnDecl, NodeId};
+use syntax::visit::FnKind;
 
 //use parser::Rule;
 
@@ -233,61 +235,15 @@ impl<'a, 'tcx> rustc::lint::LateLintPass<'a, 'tcx> for LatePass {
                            vis,
                            attr) if params.len() == 0 => {
                 let def_id = cx.tcx.hir().local_def_id(hir_id);
-                let (requires, ensures): (Vec<_>, Vec<_>) = cx.tcx.get_attrs(def_id)
-                    .iter()
-                    .filter_map(|attr| {
-                        let parsed = || {
-                            let input = pprust::tts_to_string(attr.tokens.clone());
-                            println!("Parsing attribute {}({:?})", input, attr);
-                            RestrictionParser::parse(&input)
-                                .map(|v| v.into_iter().map(|(a, e)| (a.to_string(), e)).collect::<Vec<_>>())
-                                .map_err(|e| cx.span_lint(LIQUID_RUST_LINT, attr.span, &e.to_string()))
-                        };
-                        match &*attr.path.segments[0].ident.as_str() {
-                            "requires" => Some(Either::Left(parsed())),
-                            "ensures" => Some(Either::Right(parsed())),
-                            _ => None
-                        }
-                    }
-                    )
-                    .partition_map(identity);
-
-                println!("Raw requirements: {:?}", requires);
-
-                let (requires, ensures) = if let (Ok::<_, ()>(r), Ok::<_, ()>(e)) = (requires
-                                               .into_iter()
-                                               .try_fold(HashMap::new(), |mut hm: HashMap<_, _>, r| {
-                                                   hm.extend(r?);
-                                                   Ok(hm)
-                                               }),
-                                           ensures
-                                               .into_iter()
-                                               .try_fold(HashMap::new(), |mut hm: HashMap<_, _>, r| {
-                                                   hm.extend(r?);
-                                                   Ok(hm)
-                                               }),
-                ) {
-                    println!("Requirements: {:?}", r);
-                    (r, e)
-                } else {
-                    println!("Found errors in specs, exit");
-                    return
+                let (restrictions, mir) = extract_restrictions(cx.tcx, def_id);
+                self.refinement_registry.add(def_id, restrictions);
+                let mir = match mir {
+                    Ok(mir) => mir,
+                    Err(e) => {
+                        return cx.span_lint(LIQUID_RUST_LINT, span, &e.to_string());
+                    },
                 };
-                let mir = cx.tcx.instance_mir(Instance::mono(cx.tcx, def_id).def);
-                let function_arguments_names = mir
-                    .args_iter()
-                    .filter_map(|i| Some(mir.local_decls[i].name?.as_str().to_string()))
-                    .collect::<Vec<_>>();
-                if let Err(e) = check_requires_wf(&function_arguments_names, &requires) {
-                    println!("Error in requirements");
-                    cx.span_lint(LIQUID_RUST_LINT, span,
-                                 &e.into_iter()
-                                     .map(|(a, u)| format!("unknown variables in predicate over {}: {}", a, u.into_iter().join(", ")))
-                                     .join(", ")
-                    )
-                }
-//                self.check_ensures_wf(function_arguments_names, ensures).unwrap();
-                self.refinement_registry.add(def_id, FunctionRestrictions::new(requires, ensures.get("result").cloned()));
+                println!("Late pass, fn: name: {:?},\nattrs: {:?}\n gen params: {:?},\n mir: {:#?}", name, attr, params, mir);
                 let mut mir_analyzer = MirAnalyzer::new(
                     def_id,
                     mir,
@@ -314,7 +270,6 @@ impl<'a, 'tcx> rustc::lint::LateLintPass<'a, 'tcx> for LatePass {
                     }
                 }
 
-                println!("Late pass, fn: name: {:?},\nattrs: {:?}\n gen params: {:?},\n mir: {:#?}", name, attr, params, mir);
             }
             _ => {}
         }

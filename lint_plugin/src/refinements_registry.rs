@@ -14,8 +14,8 @@ pub type SubstHash = u64;
 pub type RestrictionMap = HashMap<String, RestrictionExpr>;
 
 /// Type, that represents function preconditions as HashMap from arguments to restrictions and restriction for return value
-#[derive(Debug)]
-pub struct FunctionRestrictions(RestrictionMap, RestrictionExpr);
+#[derive(Debug, Clone)]
+pub struct FunctionRestrictions(pub RestrictionMap, pub RestrictionExpr);
 
 impl FunctionRestrictions {
     pub fn new(restrictions: RestrictionMap, ret: Option<RestrictionExpr>) -> Self {

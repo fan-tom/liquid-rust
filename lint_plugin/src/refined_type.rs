@@ -11,7 +11,7 @@ use crate::restriction_expr::Expr as RestrictionExpr;
 use std::iter::once;
 use crate::utils::IntoEither;
 
-#[derive(Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum Predicate<'tcx> {
     #[display(fmt = "{}", _0)]
     Basic(Expr<'tcx>),
@@ -81,7 +81,11 @@ impl<'tcx> Predicate<'tcx> {
     }
 
     fn from_preds(mut preds: Vec<Predicate<'tcx>>) -> Self {
-        let mut preds = preds.into_iter().filter(|p| !(p == &Predicate::Basic(Expr::r#true()))).collect::<Vec<_>>();
+        let mut preds = preds
+            .into_iter()
+            .filter(|p| !(p == &Predicate::Basic(Expr::r#true())))
+            .unique()
+            .collect::<Vec<_>>();
         if preds.is_empty() {
             Predicate::Basic(Expr::r#true())
         } else if preds.len() == 1 {
@@ -103,7 +107,14 @@ impl<'tcx> Predicate<'tcx> {
     pub fn negated(mut self) -> Self {
         match self {
             Predicate::Not(box p) => p,
-            _ => Predicate::Not(box self),
+            _ => {
+                if self == Self::r#true() {
+                    // TODO: Is it right to consider true predicate as unknown, so `not true` becomes `true` again
+                    self
+                } else {
+                    Predicate::Not(box self)
+                }
+            }
         }
     }
 
@@ -134,7 +145,7 @@ impl<'tcx> From<Expr<'tcx>> for Predicate<'tcx> {
 /// {v: <base_type> | <predicate>}
 /// Note that <predicate> may contain negated arrays of conjoined predicates
 /// when they represent refinements from different predecessors
-#[derive(Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
 #[display(fmt = "{{ v: {:?} | {} }}", base_type, predicate)]
 pub struct Refinement<'tcx> {
     base_type: TyKind<'tcx>,
@@ -196,6 +207,8 @@ impl<'tcx> Refinement<'tcx> {
             // a \/ b = -(-a /\ -b), De Morgan law
             let preds = alts
                 .into_iter()
+                // a \/ a == a
+                .unique()
                 .map(|r| r.predicate)
                 .map(Predicate::negated)
                 .collect();

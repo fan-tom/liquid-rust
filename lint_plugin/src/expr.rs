@@ -8,7 +8,7 @@ use derive_more::*;
 use crate::refinable_entity::RefinableEntity;
 use rustc::hir::def_id::DefId;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum BinOp {
     #[display(fmt = "+")]
     Add,
@@ -46,7 +46,7 @@ pub enum BinOp {
     And,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum UnaryOp {
     // !<bool> or !<bits>
     #[display(fmt = "!")]
@@ -56,7 +56,7 @@ pub enum UnaryOp {
     Neg,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum Const {
     #[display(fmt = "{}", _0)]
     Bool(bool),
@@ -127,13 +127,7 @@ impl From<mir::UnOp> for UnaryOp {
     }
 }
 
-/// Not used yet
-pub enum Predicate<'tcx> {
-    Const(Const),
-    Rel(Expr<'tcx>),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum Expr<'tcx> {
     #[display(fmt = "v")]
     V,

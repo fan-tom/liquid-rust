@@ -216,7 +216,7 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
                 StatementKind::Assign(box (lhs, rhs)) => {
                     let rhs_lqt = self.infer_lqt(&rhs, &ctx);
                     // it is SSA, we assign just once, so refine lhs
-                    ctx.refine(RefinableEntity::from_place(lhs.clone(), self.def_id), rhs_lqt);
+//                    ctx.refine(RefinableEntity::from_place(lhs.clone(), self.def_id), rhs_lqt);
                 }
                 StatementKind::FakeRead(_, _) => {
                     // no ideas what to do here
@@ -624,11 +624,11 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
     }
 
     /// Infer lqt of rvalue in cxt
-    fn infer_lqt(&self, v: &Rvalue<'tcx>, ctx: &InferenceCtx<'tcx>) -> Refinement<'tcx> {
+    fn infer_lqt(&self, v: &Rvalue<'tcx>, target_place: Place<'tcx>, ctx: &mut InferenceCtx<'tcx>) {
         match *v {
             // simple assign one value to another, no less no more
             Rvalue::Use(ref oprnd) => {
-                match oprnd {
+                let rhs_lqt = match oprnd {
                     Operand::Copy(ref p) | Operand::Move(ref p) => {
                         // we get rid of intermediate x=y, directly copy y's refinement to x
 //                        ctx.get_refinement(&RefinableEntity::from_place(p.clone(), self.def_id))
@@ -641,22 +641,45 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
                         Refinement::new(c.literal.ty.kind.clone(), expr.into())
 //                        unimplemented!("constant assign")
                     }
-                }
+                };
+                ctx.refine(RefinableEntity::from_place(target_place, self.def_id), rhs_lqt);
             }
             Rvalue::Repeat(_, _) => unimplemented!("array literal"),
             Rvalue::Ref(_, _, _) => unimplemented!("reference"),
             Rvalue::Len(_) => unimplemented!("rvalue len"),
             Rvalue::Cast(_, _, _) => unimplemented!("cast"),
 
-            // TODO: handle checked op properly, as it returns tuple (bool, ty)
-            | Rvalue::CheckedBinaryOp(op, ref lhs, ref rhs) => unimplemented!("checked op"),
-            | Rvalue::BinaryOp(op, ref lhs, ref rhs) => {
+            // TODO: handle checked op properly, as it returns tuple (ty, bool)
+            // { v: (ty, bool) | v.0 = lhs <op> rhs }
+            | Rvalue::CheckedBinaryOp(op, ref lhs, ref rhs) => {
+//                unimplemented!("checked op")
                 let oper = Expr::binary_op(op.into(), Expr::from_operand(lhs.clone(), self.def_id), Expr::from_operand(rhs.clone(), self.def_id));
+                // { v: ty | v = lhs <op> rhs }
                 let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box oper);
                 let pred = expr.into();
                 let lhs_ty = lhs.ty(self.mir.local_decls(), self.tcx);
                 let rhs_ty = rhs.ty(self.mir.local_decls(), self.tcx);
-                Refinement::new(op.ty(self.tcx, lhs_ty, rhs_ty).kind.clone(), pred)
+                let op_ty = op.ty(self.tcx, lhs_ty, rhs_ty);
+                let rhs_lqt = Refinement::new(op_ty.kind.clone(), pred);
+                let value_place = Place {
+                    base: target_place.base,
+                    projection: {
+                        let mut projection = target_place.projection.to_vec();
+                        projection.push(ProjectionElem::Field(Field::from(0usize), op_ty));
+                        self.tcx.intern_place_elems(&projection)
+                    },
+                };
+                ctx.refine(RefinableEntity::from_place(value_place, self.def_id), rhs_lqt);
+            }
+            | Rvalue::BinaryOp(op, ref lhs, ref rhs) => {
+                let oper = Expr::binary_op(op.into(), Expr::from_operand(lhs.clone(), self.def_id), Expr::from_operand(rhs.clone(), self.def_id));
+                // { v: ty | v = lhs <op> rhs }
+                let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box oper);
+                let pred = expr.into();
+                let lhs_ty = lhs.ty(self.mir.local_decls(), self.tcx);
+                let rhs_ty = rhs.ty(self.mir.local_decls(), self.tcx);
+                let rhs_lqt = Refinement::new(op.ty(self.tcx, lhs_ty, rhs_ty).kind.clone(), pred);
+                ctx.refine(RefinableEntity::from_place(target_place, self.def_id), rhs_lqt);
             }
 
             Rvalue::NullaryOp(op, rhs) => {
@@ -673,7 +696,8 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
 //                        &rhs.ty(self.mir.local_decls(), self.tcx).kind
 //                    }
 //                };
-                Refinement::new(rhs_ty.kind.clone(), pred)
+                let rhs_lqt = Refinement::new(rhs_ty.kind.clone(), pred);
+                ctx.refine(RefinableEntity::from_place(target_place, self.def_id), rhs_lqt);
             }
             Rvalue::Discriminant(ref p) => {
                 // need new operator <discr_of> to describe value of target place

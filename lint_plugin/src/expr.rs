@@ -110,6 +110,9 @@ impl From<mir::BinOp> for BinOp {
             mir::BinOp::Lt => BinOp::Lt,
             mir::BinOp::Gt => BinOp::Gt,
             mir::BinOp::Ne => BinOp::Ne,
+            mir::BinOp::Ge => BinOp::Ge,
+            mir::BinOp::Eq => BinOp::Eq,
+            mir::BinOp::Le => BinOp::Le,
             o => unimplemented!("{:?}", o),
         }
     }

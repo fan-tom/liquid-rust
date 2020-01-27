@@ -1,8 +1,9 @@
-use rustc::mir::{Body, Local};
+use rustc::{
+    mir::Body,
+    hir::def_id::DefId
+};
 use std::collections::HashMap;
 use crate::refinable_entity::RefinableEntity;
-use rustc_data_structures::sync::HashMapExt;
-use rustc::hir::def_id::DefId;
 
 pub struct NameRegistry<'tcx, 'b> {
     bodies: &'b HashMap<DefId, &'tcx Body<'tcx>>,

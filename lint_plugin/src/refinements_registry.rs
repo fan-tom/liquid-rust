@@ -1,13 +1,22 @@
-use rustc::hir::def_id::DefId;
-use rustc::ty::subst::{SubstsRef, GenericArg};
-use std::collections::HashMap;
-use crate::restriction_expr::{Expr as RestrictionExpr, Const};
-use std::collections::hash_map::{DefaultHasher, Entry};
-use rustc::ty::{List, TyCtxt, Instance};
-use std::hash::{Hash, Hasher};
+use rustc::{
+    hir::def_id::DefId,
+    ty::{
+        subst::SubstsRef,
+        TyCtxt
+    }
+};
+use std::{
+    collections::{
+        HashMap,
+        hash_map::{DefaultHasher, Entry}
+    },
+    hash::{Hash, Hasher}
+};
+use crate::{
+    restriction_expr::{Expr as RestrictionExpr, Const},
+    restriction_extractor::extract_restrictions
+};
 use failure::Error;
-use crate::restriction_extractor::extract_restrictions;
-use std::cell::RefCell;
 
 pub type SubstHash = u64;
 

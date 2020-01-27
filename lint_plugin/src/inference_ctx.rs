@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-use crate::refinable_entity::RefinableEntity;
-use crate::refined_type::{Refinement, Predicate};
-use std::fmt;
+use std::{
+    collections::HashMap,
+    fmt
+};
+use crate::{
+    refinable_entity::RefinableEntity,
+    refined_type::{Refinement, Predicate}
+};
 use itertools::Itertools;
-use crate::folder::Foldable;
-use crate::expr::Expr;
-use rustc::hir::def_id::DefId;
-use rustc::mir::Body;
 
 pub type RefinementMap<'tcx> = HashMap<RefinableEntity<'tcx>, Refinement<'tcx>>;
 /// Holds inferred types of local variables;
@@ -71,17 +71,6 @@ impl<'tcx> InferenceCtx<'tcx> {
     pub fn predicates<'s:'tcx>(&'s self) -> impl Iterator<Item=&'s Predicate<'tcx>> {
         self.refinements.values().map(|r| r.predicate())
     }
-
-    pub fn predicates_with_v_substituted<'s: 'tcx>(&'s self) -> impl Iterator<Item=Predicate<'tcx>> {
-        self.refinements.iter().map(|(e, r)| r.predicate().clone().accept(&mut |expr| {
-            if expr == Expr::V {
-                Expr::Var(e.clone())
-            } else {
-                expr
-            }
-        }))
-    }
-
 }
 
 impl<'tcx> From<RefinementMap<'tcx>> for InferenceCtx<'tcx> {

@@ -1,13 +1,18 @@
-use rustproof_libsmt::backends::smtlib2::SMTLib2;
-use rustproof_libsmt::logics::lia::{LIA, LIA_Sorts, LIA_Fn};
+use rustproof_libsmt::{
+    backends::{
+        smtlib2::SMTLib2,
+        backend::SMTBackend
+    },
+    logics::lia::{LIA, LIA_Sorts, LIA_Fn},
+    theories::{core, integer}
+};
 use std::collections::HashMap;
-use rustproof_libsmt::backends::backend::SMTBackend;
-use rustproof_libsmt::theories::{core, integer};
-use crate::expr::{Expr, Const, UnaryOp, BinOp};
-use rustc::mir::Place;
+use crate::{
+    expr::{Expr, Const, UnaryOp, BinOp},
+    refinable_entity::RefinableEntity,
+    refined_type::Predicate
+};
 use rustc::ty::TyKind;
-use crate::refinable_entity::RefinableEntity;
-use crate::refined_type::Predicate;
 
 type Solver = SMTLib2<LIA>;
 type Names<'tcx, 'e> = HashMap<RefinableEntity<'tcx>, <Solver as SMTBackend>::Idx>;

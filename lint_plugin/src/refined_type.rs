@@ -1,15 +1,17 @@
-use std::borrow::Borrow;
-use std::fmt;
+use std::{
+    borrow::Borrow,
+    iter::once
+};
 
 use derive_more::*;
 use failure::err_msg;
 use itertools::Itertools;
-use rustc::ty::{TyKind, TyCtxt};
+use rustc::ty::TyKind;
 
-use crate::expr::{Expr, Const};
-use crate::restriction_expr::Expr as RestrictionExpr;
-use std::iter::once;
-use crate::utils::IntoEither;
+use crate::{
+    expr::Expr,
+    utils::IntoEither
+};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum Predicate<'tcx> {
@@ -80,7 +82,7 @@ impl<'tcx> Predicate<'tcx> {
         ).collect())
     }
 
-    fn from_preds(mut preds: Vec<Predicate<'tcx>>) -> Self {
+    fn from_preds(preds: Vec<Predicate<'tcx>>) -> Self {
         let mut preds = preds
             .into_iter()
             .filter(|p| !(p == &Predicate::Basic(Expr::r#true())))
@@ -104,7 +106,7 @@ impl<'tcx> Predicate<'tcx> {
         Self::from_expr(Expr::r#true())
     }
 
-    pub fn negated(mut self) -> Self {
+    pub fn negated(self) -> Self {
         match self {
             Predicate::Not(box p) => p,
             _ => {
@@ -126,7 +128,7 @@ impl<'tcx> Predicate<'tcx> {
         }
     }
 
-    pub fn extend(&mut self, mut add: Self) {
+    pub fn extend(&mut self, add: Self) {
         take_mut::take(self, |slf|
             Predicate::from_preds(once(slf).chain(add.parts()).collect())
         );

@@ -1,8 +1,7 @@
 use rustc::{
-    mir::{self, Local, Operand, Place},
+    mir::{self, Operand, Place},
     ty::{TyKind, Const as RustConst},
 };
-use rustc::mir::Constant;
 use rustc_target::abi::Size;
 use derive_more::*;
 use crate::refinable_entity::RefinableEntity;

@@ -71,7 +71,6 @@ pub mod fold {
 }
 
 mod walker {
-    use super::{Expr, UnaryOp, BinOp, Const};
     pub trait Walker {
         fn walk_v(&mut self) {}
         fn walk_var(&mut self) {}

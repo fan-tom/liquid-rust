@@ -1,76 +1,38 @@
 #![feature(plugin_registrar)]
 #![feature(box_syntax, rustc_private, box_patterns, entry_insert)]
-//#![feature(plugin)]
-//#![plugin(peg_syntax_ext)]
 
 #[macro_use]
 extern crate rustc;
 extern crate rustc_data_structures;
-//extern crate rustc_plugin;
-//extern crate rustc_plugin_impl;
 extern crate rustc_driver;
 extern crate rustc_target;
 extern crate syntax;
 extern crate syntax_pos;
 
-
-use std::{
-    collections::{HashMap, HashSet},
-    convert::identity
-};
-
-use failure::Error;
-use itertools::*;
-//use pest::Parser;
 use rustc::{
     hir,
-    lint::{EarlyContext, EarlyLintPassObject, LateContext, LateLintPassObject, LintArray, LintContext, LintPass},
-    mir::{
-        HasLocalDecls,
-        LocalDecl,
-        visit::Visitor
-    },
-    ty::{
-        DefIdTree,
-        Instance,
-        layout::MaybeResult
-    }
+    lint::{EarlyContext, EarlyLintPassObject, LateContext, LateLintPassObject, LintContext, LintPass},
 };
-use rustc_data_structures::sync::Once;
 use rustc_driver::plugin::Registry;
 use syntax::{
-    ast::{
-        self,
-        Attribute,
-        Ident,
-        Name,
-        Path
-    },
+    ast,
     source_map,
-    print::pprust
+    ast::{FnDecl, NodeId},
+    visit::FnKind
 };
 use syntax_pos::Span;
 
-use rustpeg_parser::RestrictionParser;
 
 use crate::{
     mir_analyzer::MirAnalyzer,
-    restriction_expr::Expr,
-    refinements_registry::Restricter,
-    visitor::Visitable,
+    refinements_registry::{
+        Restricter,
+        RestrictionRegistry
+    },
+    restriction_extractor::extract_restrictions
 };
-use crate::refinements_registry::{RestrictionRegistry, FunctionRestrictions};
-use crate::restriction_extractor::{check_requires_wf, extract_restrictions};
-use syntax::ast::{FnDecl, NodeId};
-use syntax::visit::FnKind;
-
-//use parser::Rule;
-
-//use rustproof::MirData;
-
 
 mod z3_interface;
-//mod parser;
 mod refined_type;
 mod rustpeg_parser;
 mod mir_analyzer;
@@ -92,7 +54,6 @@ declare_lint!(LIQUID_RUST_LINT, Deny, "Liquid rust");
 struct EarlyPass;
 
 struct LatePass {
-    z3_ctx: z3::Context,
     refinement_registry: Restricter,
 }
 
@@ -100,20 +61,12 @@ impl LintPass for LatePass {
     fn name(&self) -> &'static str {
         "liquid"
     }
-
-//    fn get_lints(&self) -> LintArray {
-//        lint_array!(LIQUID_RUST_LINT) // We'll get to this later, kind of...
-//    }
 }
 
 impl LintPass for EarlyPass {
     fn name(&self) -> &'static str {
         "liquid"
     }
-
-//    fn get_lints(&self) -> LintArray {
-//        lint_array!() // We'll definitely get to this later!
-//    }
 }
 
 #[plugin_registrar]
@@ -131,28 +84,12 @@ impl rustc::lint::EarlyLintPass for EarlyPass {
 
     fn check_stmt(&mut self, cx: &EarlyContext, stmt: &ast::Stmt) {
         if let ast::StmtKind::Local(loc) = &stmt.kind {
-            if let Some(ty) = &loc.ty {
-//                ty.
-//                let ty_attrs = ty.attrs();
-//                let refinements = attrs_to_refinements(ty_attrs)
-            }
             println!("Early pass, local: {:?}: {:?}({:?})", loc.pat, loc.ty, loc.ty.as_ref().map(|t| &t.kind));
         }
     }
 }
 
 impl<'a, 'tcx> rustc::lint::LateLintPass<'a, 'tcx> for LatePass {
-    fn check_body(&mut self, cx: &LateContext<'a, 'tcx>, body: &hir::Body) {
-
-//        let mir = cx.tcx.instance_mir()
-//        println!("Late pass, body: {:?}", body);
-    }
-
-    /*    fn check_attribute(&mut self, cx: &LateContext<'a, 'tcx>, attr: &'tcx ast::Attribute) {
-            println!("Late pass, attribute: {:?}", attr)
-        }*/
-
-
     fn check_stmt(&mut self, cx: &LateContext<'a, 'tcx>, stmt: &'tcx hir::Stmt) {
         if let hir::StmtKind::Local(loc) = &stmt.kind {
             // no need to check definition without init
@@ -249,8 +186,6 @@ impl<'a, 'tcx> rustc::lint::LateLintPass<'a, 'tcx> for LatePass {
                     mir,
                     cx.tcx,
                     Default::default(),
-                    Default::default(),
-                    Default::default(),
                     &mut self.refinement_registry
                 ).unwrap();
                 match mir_analyzer.check() {
@@ -278,48 +213,6 @@ impl<'a, 'tcx> rustc::lint::LateLintPass<'a, 'tcx> for LatePass {
 
 impl LatePass {
     fn new() -> Self {
-        Self {
-            z3_ctx: z3::Context::new(&z3::Config::new()),
-            refinement_registry: Default::default(),
-        }
+        Self { refinement_registry: Default::default() }
     }
-
-
-    fn check_function_call(&self) -> Result<(), ()> {
-        Ok(())
-    }
-
-    /// foo.bar();
-    fn check_method_call(&self) -> Result<(), ()> {
-        Ok(())
-    }
-
-    /// x = y;
-    fn check_variable_assign(&self) -> Result<(), ()> {
-        Ok(())
-    }
-
-    /// let x[: Foo] [= bar];
-    fn check_binding(&self) -> Result<(), ()> {
-        Ok(())
-    }
-
-    /// (x: Foo + y)
-    fn check_type_ascription(&self) -> Result<(), ()> {
-        Ok(())
-    }
-
-    fn attr_to_z3_ast(&mut self, attr: &str, base_type: hir::Ty) -> Result<(), Error> {
-//        unimplemented!()
-        let restriction = RestrictionParser::parse(attr)?;
-        println!("attr parsed: {:?}", restriction);
-//        let tokens = attrs.span.;
-
-//        for token in tokens {
-//
-//        }
-        Ok(())
-    }
-
-//    fn check_restriction_wellformedness(&self, args: & [], restriction: & [Expr])
 }

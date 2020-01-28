@@ -134,3 +134,29 @@ and expressions. There is no notion of expression in MIR, however it seems that 
 SSA variable, that has type as once-assigned value. Environment of each that assignment consists of all the variables,
 introduced earlier in that block or any of its predecessors, whereas in functional language each expr is in another expression and
 there is notion of 'sibling' expressions.
+
+28.01.2020
+
+Currently plugin can infer types in simple cases, from assignment and arithmetic operations, can handle conditions in 
+branches, check preconditions of called functions and use their postconditions to refine variables. The main problem
+now is to infer most common type **after** branches, as we need to somehow handle the fact that refienements in
+different branches are valid under different conditions. For example, consider next piece of code:
+ 
+```rust
+#[ensures(return > 0)]
+fn returns_positive(x: i32) -> i32 {
+    if x < 0 {          // 1
+        1               // 2
+    } else if x == 0 {  // 3
+        x+1             // 4
+    } else {            // 5
+        x               // 6
+    }                   // 7
+                        // 8
+}
+```
+As you can see, postcondition is always satisfied, but plugin infers types after `if` (line 8) as
+`(x < 0 \/ x = 0 \/ not (x < 0 \/ x = 0)) /\ (return = 1 \/ return = x + 1 \/ return = x)` and so postcondition check fails, because
+we lost connection between condition over `x` and corresponding `return` value.
+Instead, we need to infer most common type for all variables among all branches. Here it may be `return > 0`. But that 
+type is imprecise, as we lose information that `return = x` if `x > 0` or `return = 1` otherwise. Can we handle this?

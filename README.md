@@ -160,3 +160,73 @@ As you can see, postcondition is always satisfied, but plugin infers types after
 we lost connection between condition over `x` and corresponding `return` value.
 Instead, we need to infer most common type for all variables among all branches. Here it may be `return > 0`. But that 
 type is imprecise, as we lose information that `return = x` if `x > 0` or `return = 1` otherwise. Can we handle this?
+
+30.01.2020
+
+I considered to try to not infer most common type among all condition branches, but instead track refinement predicates
+with corresponding conditions, under which their was assigned and then convert them to SMT `ite` cascades.
+Let's consider previous example again
+```rust
+#[ensures(return > 0)]
+fn returns_positive(x: i32) -> i32 {
+    let ret = if x < 0 {// 1
+        1               // 2
+    } else if x == 0 {  // 3
+        x+1             // 4
+    } else {            // 5
+        x               // 6
+    };                  // 7
+    ret                 // 8
+}
+```
+(I changed it a little to have the variable to reason about)
+Such code is translated into the next CFG:
+```rust
+                                   +----------------+
+                                   |  bb0           |
+                                   +-----------+----+
+                                   |  tmp1 = x < 0  |
+                          false    +-----------+----+ true
+                        +----------+  switch tmp1   +------+
+                        |          +----------------+      |
+                        |                                  |
+             +----------v---------+                  +-----v-----+
+             |  bb2               |                  |  bb1      |
+             +--------------------+                  +-----------+
+             |  tmp1 = x == 0     |                  |  ret = 1  |
+             +--------------------+                  +-----------+
+      +------+  switch tmp2       +------+           |   goto    |
+      |      +--------------------+      |           +-----+-----+
+      |                                  |                 |
++-----v-----+                      +-----v----------+      |
+|  bb4      |                      |  bb3           |      |
++-----------+                      +----------------+      |
+|  ret = x  |                      |  ret = x + 1   |      |
++-----------+                      +----------------+      |
+|   goto    +----------+-----------+   goto         |      |
++-----------+          |           +----------------+      |
+                +------v-------+                           |
+                |  bb5         |                           |
+                +--------------<---------------------------+
+                |  return ret  |
+                +--------------+
+
+```
+Each rectangle denotes basic block, has header, statements and terminator.
+In bb1 we refine `ret` with predicate `{v: int | v = 1}`, in bb3 - with `{v: int | v = x+1}`,
+in bb 4 - with `{v: int | v = x}`. However, in bb5 we don't know what value of `ret` will have, as we lost path predicates.
+To fix this, we can modify our refinement predicates to carry path predicates.
+In bb1 we will now refine `ret` with predicate `{v: int | v = 1 if x < 0}`, 
+in bb3 - with `{v: int | v = x+1 if x = 0}`
+and in bb 4 - with `{v: int | v = x if (not (x < 0)) /\ (not (x = 0))}`.
+When we convert them to SMT solver, we build `ite` cascade:
+```
+(assert (ret = (ite (< x 0) 1 (ite (= x 0) (+ x 1) x))))
+```
+Note, here we assume that condition predicate of last refinement is equal to negation of all other predicates.
+To check this exhaustiveness, we can supply additional assert, that ensures our assumption:
+```
+(assert (not (= (not (or (< x 0) (= x 0))) ((not (< x 0)) /\ (not (= x 0))))))
+```
+If this assert is satisfied, then there are conditions, that are not covered by any of conditional predicates, but it
+seem that Rust compiler must reject such code, as it means not each branch returns value.

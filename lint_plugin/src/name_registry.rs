@@ -1,6 +1,6 @@
 use rustc::{
     mir::Body,
-    hir::def_id::DefId
+    hir::def_id::DefId,
 };
 use std::collections::HashMap;
 use crate::refinable_entity::RefinableEntity;
@@ -21,22 +21,30 @@ impl<'tcx, 'b> NameRegistry<'tcx, 'b> {
     }
 
     pub fn get(&mut self, var: RefinableEntity<'tcx>) -> &str {
-        let bodies = &self.bodies;
-        let counter = &mut self.counter;
-        self.names.entry(var.clone()).or_insert_with(|| {
+        if !self.names.contains_key(&var) {
+            let bodies = &self.bodies;
+            let counter = &mut self.counter;
             let name = if let Some(name) = var
                 .name(bodies
                     .get(&var.fun_id())
                     .expect(&format!("Unknown function id: {:?}", var.fun_id()))
                 ) {
-                name
+                if !self.names.values().any(|n| n == &name) {
+                    name
+                } else {
+                    *counter += 1;
+                    format!("{}_{}", name, counter)
+                }
             } else {
                 *counter += 1;
                 format!("VAR_{}", counter)
             };
             println!("Assigned name {} to var {:?}", name, var);
-            name
-        })
+            self.names.insert(var.clone(), name);
+        }
+        // ugly code because borrowck doesn't allow to read hashmap when
+        // we created entry by key, even if that entry is not occupied
+        self.names.get(&var).unwrap()
     }
 
     pub fn get_existing(&mut self, var: &RefinableEntity<'tcx>) -> Option<&str> {

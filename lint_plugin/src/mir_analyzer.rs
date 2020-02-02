@@ -482,7 +482,8 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
     // checks that /\P->/\Q holds (!(/\P->/\Q) is not provable)
     fn check_implication_holds(&self, p: &mut InferenceCtx<'tcx>, q: &mut InferenceCtx<'tcx>, bodies: &HashMap<DefId, &Body<'tcx>>) -> Result<Option<String>, failure::Error> {
         println!("Check implication holds:\np: {}\nq: {}", p, q);
-        let mut z3 = Z3::new_with_binary("./z3");
+        let z3exec = std::env::var("LIQUID_Z3").ok();
+        let mut z3 = z3exec.map(|e| Z3::new_with_binary(&e)).unwrap_or_default();
         let mut solver = SMTLib2::new(Some(LIA));
         solver.set_logic(&mut z3);
         let mut names = HashMap::new();

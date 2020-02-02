@@ -248,10 +248,7 @@ mod test {
         let res = Refinement::from_alternatives(alts)?;
         let expected = Refinement {
             base_type: TyKind::Bool,
-            predicate: Predicate::Not(box Predicate::Conj(
-                vec![Predicate::Not(box Predicate::Basic(Expr::r#true())),
-                     Predicate::Not(box Predicate::Basic(Expr::r#true()))],
-            )),
+            predicate: Predicate::Basic(Expr::r#true())
         };
         assert_eq!(res, expected);
         Ok(())

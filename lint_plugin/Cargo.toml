@@ -26,6 +26,9 @@ z3 = "0.3"
 rustproof-libsmt = { git = "https://github.com/bpowers/libsmt.rs", rev = "2496a3e638f5" }
 derive_more = "0.15"
 
+[dev-dependencies]
+trybuild = "1.0"
+
 [target.'cfg(NOT_A_PLATFORM)'.dependencies]
 rustc = {path = "../../rust/src/librustc"}
 rustc_data_structures = {path = "../../rust/src/librustc_data_structures"}
@@ -40,6 +43,6 @@ syntax_pos = {path = "../../rust/src/libsyntax_pos"}
 #[build-dependencies]
 #peg = { version = "0.5" }
 
-[features]
+#[features]
 # used in example to enable plugin invocation
-liquid = []
+#liquid = []

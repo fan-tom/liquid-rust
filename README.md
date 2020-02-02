@@ -160,3 +160,28 @@ As you can see, postcondition is always satisfied, but plugin infers types after
 we lost connection between condition over `x` and corresponding `return` value.
 Instead, we need to infer most common type for all variables among all branches. Here it may be `return > 0`. But that 
 type is imprecise, as we lose information that `return = x` if `x > 0` or `return = 1` otherwise. Can we handle this?
+
+02.02.2020
+
+I just realized that MIR representation is not SSA actually, as there are multiple assignments
+to mutable variables, including function arguments. It breaks almost the whole idea, as we cannot precisely
+track variable's refinements anymore. For example, in the following piece of code
+```rust
+let mut a = 1;
+a += 1;
+let b = a;
+```
+we cannot proof that `b = 2`, because we get such SMT asserts:
+```
+(a = 1 \/ a = a + 1) /\ (b = a)
+```
+so we can only conclude that `b = 1 \/ a + 1`.
+We need to introduce new version of variable `a` when we mutate it and use that new version in all the statements
+that follow this reassignment. However, there may be cases where reassignment is conditional, so we also need so-called
+φ-statements, that "merge" different versions of the same variable together, therefore previous code gives next asserts:
+```
+(a0 = 1) /\ (a1 = a0 + 1) /\ (b = a1)
+```
+which lets us proof that `b = 2`.
+The question is: do we need our own true-SSA code representation, created from MIR,
+or we can somehow encode that variables versioning and versions merging into InferenceCtx directly?

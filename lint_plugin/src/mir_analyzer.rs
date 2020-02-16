@@ -170,7 +170,11 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
         for stmt in &block.statements {
             match &stmt.kind {
                 StatementKind::Assign(box (lhs, rhs)) => {
-                    let rhs_lqt = self.infer_lqt(&rhs, &ctx);
+                    println!("Assign, lhs ty: {:?}, rhs ty: {:?}",
+                             lhs.ty(self.mir.local_decls(), self.tcx),
+                             rhs.ty(self.mir.local_decls(), self.tcx),
+                    );
+                    self.infer_lqt(&rhs, lhs.clone(), &mut ctx);
                     // it is SSA, we assign just once, so refine lhs
 //                    ctx.refine(RefinableEntity::from_place(lhs.clone(), self.def_id), rhs_lqt);
                 }

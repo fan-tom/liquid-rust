@@ -1,5 +1,6 @@
 use derive_more::Display;
-use rustc::mir::{Local, Place, PlaceBase, Body};
+use rustc::mir::{Local, Place, Body, RETURN_PLACE};
+use crate::utils::ANN_RET_NAME;
 use rustc::hir::def_id::DefId;
 use crate::typable::{Typable, Ty, Typer};
 
@@ -14,7 +15,14 @@ impl<'tcx> RefinableEntity<'tcx> {
     /// Body must refer to self.fun_id
     pub fn name(&self, body: &Body) -> Option<String> {
         if let Some(local)= self.place.as_local() {
-            body.local_decls[local].name.map(|n| (*n.as_str()).to_owned())
+            if local == RETURN_PLACE {
+                ANN_RET_NAME.to_owned().into()
+            } else {
+                // TODO: hack, need to somehow reflect local index in name without
+                // leaking implementation details
+                body.local_decls[local].name.map(|n| (*n.as_str()).to_owned())
+                    .unwrap_or(format!("LOCAL_{}__{}_{}", local.as_u32(), self.fun_id.krate.as_u32(), self.fun_id.index.as_u32())).into()
+            }
         } else {
             None
         }

@@ -104,6 +104,12 @@ impl rustc::lint::EarlyLintPass for EarlyPass {
             println!("Early pass, local: {:?}: {:?}({:?})", loc.pat, loc.ty, loc.ty.as_ref().map(|t| &t.kind));
         }
     }
+
+    fn check_fn(&mut self, cx: &EarlyContext<'_>, kind: FnKind<'_>, decl: &FnDecl, span: Span, id: NodeId) {
+        if let FnKind::ItemFn(ident, header, vis, block) = kind {
+            println!("Early pass, fn: {:?}\nid: {:?}\nheader: {:#?}\ndecl:{:#?}\nspan: {:#?}", ident, id, header, decl, span);
+        }
+    }
 }
 
 impl<'a, 'tcx> rustc::lint::LateLintPass<'a, 'tcx> for LatePass {

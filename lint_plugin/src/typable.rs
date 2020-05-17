@@ -2,7 +2,6 @@ use rustc::mir::Body;
 use crate::refinable_entity::RefinableEntity;
 use rustc::ty::{TyCtxt, TyKind};
 use std::convert::{TryFrom, TryInto};
-use std::option::NoneError;
 use std::collections::HashMap;
 use rustc::hir::def_id::DefId;
 

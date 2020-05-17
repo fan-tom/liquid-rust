@@ -12,7 +12,7 @@ use crate::typable::{Typable, Ty, Typer};
 pub enum BinOp {
     #[display(fmt = "+")]
     Add,
-    #[display(fmt = "_")]
+    #[display(fmt = "-")]
     Sub,
     #[display(fmt = "*")]
     Mul,
@@ -209,6 +209,10 @@ impl<'tcx> Expr<'tcx> {
         Expr::Const(Const::Bool(true))
     }
 
+    pub fn v_eq(rhs: Expr<'tcx>) -> Self {
+        Expr::binary_op(BinOp::Eq, Expr::V, rhs)
+    }
+
     pub fn binary_op(op: BinOp, lhs: Expr<'tcx>, rhs: Expr<'tcx>) -> Self {
         if op == BinOp::Ne {
             Expr::UnaryOp(UnaryOp::Not, box Expr::binary_op(BinOp::Eq, lhs, rhs))
@@ -250,7 +254,7 @@ impl From<&RustConst<'_>> for Expr<'_> {
             TyKind::Uint(ty) => {
                 let size = Size::from_bits(ty.bit_width().unwrap() as u64);
                 let bits = c.val.try_to_bits(size).unwrap();
-                Const::Int { bits, size: size.bits() }
+                Const::UInt { bits, size: size.bits() }
             }
             TyKind::Int(ty) => {
                 let size = Size::from_bits(ty.bit_width().unwrap() as u64);

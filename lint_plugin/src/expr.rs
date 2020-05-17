@@ -6,6 +6,7 @@ use rustc_target::abi::Size;
 use derive_more::*;
 use crate::refinable_entity::RefinableEntity;
 use rustc::hir::def_id::DefId;
+use crate::typable::{Typable, Ty, Typer};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum BinOp {
@@ -73,6 +74,16 @@ pub enum Const {
     },
 }
 
+impl<'tcx, T: Typer<'tcx>> Typable<'tcx, T> for Const {
+    fn ty(&self, _: &T) -> Option<Ty> {
+        match self {
+            Const::Bool(_) => Ty::Bool,
+            Const::Int { size, .. } => Ty::Int(*size as usize),
+            Const::UInt { size, .. } => Ty::UInt(*size as usize),
+        }.into()
+    }
+}
+
 impl Const {
     pub fn try_to_i64(&self) -> Option<i64> {
         match self {
@@ -93,6 +104,29 @@ impl Const {
             },
             Const::UInt { size, bits } if size < &64 => {
                 Some(*bits as i64)
+            },
+            _ => None,
+        }
+    }
+    pub fn try_to_u64(&self) -> Option<u64> {
+        match self {
+            Const::UInt { size, bits } => {
+                Some(
+                    if size <= &8 {
+                        (*bits as u8) as u64
+                    } else if size <= &16 {
+                        (*bits as u16) as u64
+                    } else if size <= &32 {
+                        (*bits as u32) as u64
+                    } else if size <= &64 {
+                        *bits as u64
+                    } else {
+                        None?
+                    }
+                )
+            },
+            Const::Int { size, bits } if size <= &64 => {
+                Some(*bits as u64)
             },
             _ => None,
         }
@@ -140,6 +174,15 @@ pub enum Expr<'tcx> {
     BinaryOp(BinOp, Box<Expr<'tcx>>, Box<Expr<'tcx>>),
 }
 
+pub trait ExprFolder {
+    type T;
+    fn fold_v() -> Self::T;
+    fn fold_var(var: RefinableEntity) -> Self::T;
+    fn fold_const(r#const: Const) -> Self::T;
+    fn fold_unaryop(unaryop: UnaryOp, expr: Expr) -> Self::T;
+    fn fold_binaryop(binop: BinOp, lhs: Expr, rhs: Expr) -> Self::T;
+}
+
 impl<'tcx> Expr<'tcx> {
     pub fn r#true() -> Self {
         Expr::Const(Const::Bool(true))
@@ -167,16 +210,17 @@ impl<'tcx> Expr<'tcx> {
     }
 }
 
-//impl<'tcx> From<Operand<'tcx>> for Expr<'tcx> {
-//    fn from(op: Operand<'tcx>) -> Self {
-//        match op {
-//            Operand::Copy(e) | Operand::Move(e) => {
-//                Expr::Var(e)
-//            }
-//            Operand::Constant(c) => c.literal.into()
-//        }
-//    }
-//}
+impl<'tcx, T: Typer<'tcx>> Typable<'tcx, T> for Expr<'tcx> {
+    fn ty(&self, typer: &T) -> Option<Ty> {
+        match self {
+            Expr::V => typer.v_ty(),
+            Expr::Var(v) => v.ty(typer),
+            Expr::Const(c) => c.ty(typer),
+            Expr::UnaryOp(_, rhs) => rhs.ty(typer),
+            Expr::BinaryOp(_, lhs, _) => lhs.ty(typer)
+        }.into()
+    }
+}
 
 impl From<&RustConst<'_>> for Expr<'_> {
     fn from(c: &RustConst) -> Self {
@@ -217,7 +261,7 @@ mod visitor {
     }
 }
 
-mod folder {
+mod foldable {
     use crate::folder::{Foldable, Folder};
     use super::*;
 

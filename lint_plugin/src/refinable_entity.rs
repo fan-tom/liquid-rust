@@ -1,6 +1,7 @@
 use derive_more::Display;
 use rustc::mir::{Local, Place, PlaceBase, Body};
 use rustc::hir::def_id::DefId;
+use crate::typable::{Typable, Ty, Typer};
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Display)]
 #[display(fmt = "<{:?}: {:?}>", fun_id, place)]
@@ -35,6 +36,16 @@ impl<'tcx> RefinableEntity<'tcx> {
             fun_id,
             place: local.into(),
         }
+    }
+
+    pub fn place(&self) -> &Place<'tcx> {
+        &self.place
+    }
+}
+
+impl<'tcx, T: Typer<'tcx>> Typable<'tcx, T> for RefinableEntity<'tcx> {
+    fn ty(&self, typer: &T) -> Option<Ty> {
+        typer.ty(self).into()
     }
 }
 

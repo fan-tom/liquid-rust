@@ -1,5 +1,5 @@
 #![feature(plugin_registrar)]
-#![feature(box_syntax, rustc_private, box_patterns, entry_insert)]
+#![feature(box_syntax, rustc_private, box_patterns, entry_insert, try_trait, associated_type_defaults, type_ascription)]
 
 #[macro_use]
 extern crate rustc;
@@ -49,6 +49,7 @@ mod utils;
 mod error;
 mod restriction_extractor;
 
+mod typable;
 declare_lint!(LIQUID_RUST_LINT, Deny, "Liquid rust");
 
 struct EarlyPass;

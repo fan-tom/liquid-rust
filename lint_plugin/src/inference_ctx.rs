@@ -68,7 +68,7 @@ impl<'tcx> InferenceCtx<'tcx> {
         self.refinements
     }
 
-    pub fn predicates<'s:'tcx>(&'s self) -> impl Iterator<Item=&'s Predicate<'tcx>> {
+    pub fn predicates(&self) -> impl Iterator<Item=&Predicate<'tcx>> {
         self.refinements.values().map(|r| r.predicate())
     }
 }

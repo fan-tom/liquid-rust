@@ -13,7 +13,7 @@ peg::parser!{grammar restriction() for str {
     //float -> f64 = n:$(int ("." [0-9]*)? (^"e" int)?) {n.parse().unwrap()}
 
     rule int() -> &'input str = $(("+" / "-")? ['0'..='9']+)
-    pub rule integer() -> u64 = n:int() {n.parse().unwrap()}
+    pub rule integer() -> i128 = n:int() {n.parse().unwrap()}
 
     rule paren<T>(x: rule<T>) -> T = "(" _ v:x() _ ")" {v}
     rule quoted<T>(x: rule<T>) -> T = "\"" _ v:x() _ "\"" {v}
@@ -38,7 +38,7 @@ peg::parser!{grammar restriction() for str {
         --
         i:ident() {Expr::Var(i.to_string())}
         --
-        n:integer() {Expr::Const(Const::Int{bits: u128::from(n), size: 64})}
+        n:integer() {Expr::Const(Const::Int(n))}
         --
         e:paren(<arith_expr()>) {e}
     }

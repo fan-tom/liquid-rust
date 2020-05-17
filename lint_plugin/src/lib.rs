@@ -47,6 +47,7 @@ mod name_registry;
 mod folder;
 mod utils;
 mod error;
+mod z3;
 mod restriction_extractor;
 mod to_smt;
 mod smt_ctx;
@@ -56,8 +57,21 @@ declare_lint!(LIQUID_RUST_LINT, Deny, "Liquid rust");
 
 struct EarlyPass;
 
+#[derive(Default)]
 struct LatePass {
+    z3: z3::Z3,
     refinement_registry: Restricter,
+}
+
+impl LatePass {
+    fn new() -> Self {
+        let mut z3 = z3::Z3::default();
+        z3.feed_file("./prelude.smt2").expect("Cannot feed prelude");
+        Self {
+            z3,
+            refinement_registry: Default::default(),
+        }
+    }
 }
 
 impl LintPass for LatePass {
@@ -189,6 +203,7 @@ impl<'a, 'tcx> rustc::lint::LateLintPass<'a, 'tcx> for LatePass {
                     mir,
                     cx.tcx,
                     Default::default(),
+                    &mut self.z3,
                     &mut self.refinement_registry
                 ).unwrap();
                 match mir_analyzer.check() {
@@ -211,11 +226,5 @@ impl<'a, 'tcx> rustc::lint::LateLintPass<'a, 'tcx> for LatePass {
             }
             _ => {}
         }
-    }
-}
-
-impl LatePass {
-    fn new() -> Self {
-        Self { refinement_registry: Default::default() }
     }
 }

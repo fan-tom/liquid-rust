@@ -37,14 +37,19 @@ use super::{
 };
 use rustproof_libsmt::{
     backends::{
-        z3::Z3,
         smtlib2::SMTLib2,
         backend::{SMTBackend, SMTRes}
     },
     theories::core,
     logics::lia::LIA
 };
+use crate::z3::Z3;
 use maplit::*;
+use crate::to_smt::{ToSmt, DefaultSmtConverterCtx, SmtConverterCtx};
+use crate::smt_ctx::SmtCtx;
+use rustproof_libsmt::logics::qf_aufbv::QF_AUFBV;
+use crate::typable::DefaultTyper;
+use std::convert::TryInto;
 
 type VarNameTy = String;
 
@@ -69,7 +74,7 @@ impl LocalByName for Body<'_> {
     }
 }
 
-pub(super) struct MirAnalyzer<'tcx, R: RestrictionRegistry> {
+pub(super) struct MirAnalyzer<'tcx, 'z, R: RestrictionRegistry> {
     /// DefId of entity (function/const) this MirAnalyzer belongs to
     def_id: DefId,
     mir: &'tcx Body<'tcx>,
@@ -79,16 +84,18 @@ pub(super) struct MirAnalyzer<'tcx, R: RestrictionRegistry> {
     block_inference_cache: RefCell<HashMap<BasicBlock, InferenceCtx<'tcx>>>,
     /// registry to get globals/functions refinements from
     restriction_registry: R,
+    z3: &'z mut Z3,
     /// all type errors, collected during body check
     errors: Vec<TypeError>,
 }
 
-impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
+impl<'tcx, 'z, R: RestrictionRegistry> MirAnalyzer<'tcx, 'z, R> {
     pub fn new(
         def_id: DefId,
         mir: &'tcx Body<'tcx>,
         tcx: TyCtxt<'tcx>,
         type_annotations: HashMap<VarNameTy, Refinement<'tcx>>,
+        z3: &'z mut Z3,
         restriction_registry: R,
     ) -> Result<Self, failure::Error> {
         Ok(Self {
@@ -97,6 +104,7 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
             tcx,
             type_annotations,
             block_inference_cache: HashMap::with_capacity(mir.basic_blocks().len()).into(),
+            z3,
             restriction_registry,
             errors: Default::default(),
         })
@@ -122,8 +130,9 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
             println!("fun lqt: {}", res);
             let body = self.mir;
             let fun_id = self.def_id;
+            let tcx = self.tcx;
             let self_post = self.self_refinement().post();
-            let mut need = Self::postcondition_to_inference_ctx(self_post, body, fun_id)?;
+            let mut need = Self::postcondition_to_inference_ctx(self_post, body, fun_id, tcx)?;
             if let Some(model) = self.check_implication_holds(&mut res, &mut need, &hashmap! {self.def_id => self.mir})? {
                 self.errors.push(TypeError::new(format!("Constraint violation:\nConstraint: {}\nModel: {}", need, model), self.mir.span));
             }
@@ -256,13 +265,13 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
                 };
                 let discr_re = RefinableEntity::from_place(discr_local.clone(), self.def_id);
                 if let Some(&value) = values.get(target_idx) {
-                    let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::Const(cnst(value)?));
+                    let expr = Expr::v_eq(Expr::Const(cnst(value)?));
                     let refinement = Refinement::new(switch_ty.kind.clone(), expr.into());
                     base_lqt.refine(discr_re.clone(), refinement);
                 } else {
                     // otherwise discr is not equal to any of values
                     for &v in values.iter() {
-                        let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::Const(cnst(v)?));
+                        let expr = Expr::v_eq(Expr::Const(cnst(v)?));
                         let refinement = Refinement::new(switch_ty.kind.clone(), Predicate::from_expr(expr).negated());
                         base_lqt.refine(discr_re.clone(), refinement);
                     }
@@ -290,12 +299,23 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
 //                            panic!("Found precondition violation");
                         }
                         let self_body = self.mir;
+                        let dst_type = dst.ty(self_body.local_decls(), tcx).ty.kind.clone();
+                        let v_ty = (&dst_type).try_into().ok();
                         base_lqt.refine(
                             RefinableEntity::from_place(dst.clone(), self_id),
                             Refinement::new(
-                                dst.ty(self_body.local_decls(), tcx).ty.kind.clone(),
+                                dst_type,
                                 postcondition
-                                    .fold(&mut RestrictionToExprConverter(fun_body, "return", *func_def))?
+                                    .fold(&mut RestrictionToExprConverter {
+                                        mir: fun_body,
+                                        name: "return",
+                                        fun_id: *func_def,
+                                        typer: DefaultTyper {
+                                            bodies: &hashmap! { self_id => self_body, *func_def => fun_body },
+                                            tcx: self.tcx,
+                                            v_ty,
+                                        },
+                                    })?
                                     // here we replace all references to formal arguments in postcondition with corresponding actual parameters
                                     .accept(&mut |e|
                                         if let Expr::Var(formal) = e {

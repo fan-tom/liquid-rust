@@ -41,6 +41,10 @@ impl<'tcx> InferenceCtx<'tcx> {
         // we need to assign more specific type to var, provided by lqt
         // and also check that it is compatible with existing one
         // conjoin predicates
+        println!("Refining {} with {}", var, lqt);
+        if lqt.to_string() == "{ v: Bool | not (v = 0) }" {
+            panic!("Found!!!")
+        }
         if let Some(existing_refinement) = self.refinements.get_mut(&var) {
             existing_refinement.adjust(lqt).expect(&format!("var: {:?}, self: {:#?}", &var, self));
         } else {

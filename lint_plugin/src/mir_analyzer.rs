@@ -608,7 +608,10 @@ impl<'tcx, 'z, R: RestrictionRegistry> MirAnalyzer<'tcx, 'z, R> {
             SMTRes::Unsat(_, _) => Ok(None),
             SMTRes::Sat(_, Some(model)) => Ok(Some(model)),
             SMTRes::Sat(_, None) => Ok(Some("No model received".into())),
-            SMTRes::Error(err, _) => Err(failure::err_msg(err))
+            SMTRes::Error(err, _) => {
+                eprint!("Error while solving: {}", err);
+                Err(failure::err_msg(err))
+            }
         }
     }
 

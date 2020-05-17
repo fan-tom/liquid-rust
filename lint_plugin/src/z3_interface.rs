@@ -70,10 +70,12 @@ fn smt_from_const(
     s: &mut Solver,
     _const: &Const,
 ) -> <Solver as SMTBackend>::Idx {
-    match _const {
+    let cnst = match _const {
         Const::Bool(value) => s.new_const(core::OpCodes::Const(*value)),
         value @ Const::Int { .. } | value @ Const::UInt { .. } => s.new_const(integer::OpCodes::Const(value.try_to_i64().unwrap())),
-    }
+    };
+    println!("Emitted const {} from {}", s.expand_assertion(cnst), _const);
+    cnst
 }
 
 impl<'tcx, C: SmtConverterCtx<'tcx, QF_AUFBV>> ToSmt<'tcx, QF_AUFBV, C> for TyKind<'_> {
@@ -156,7 +158,7 @@ fn smt_from_var(
     names: &Names,
     ref_entity: &RefinableEntity,
 ) -> <Solver as SMTBackend>::Idx {
-    *names.get(ref_entity).ok_or(failure::format_err!("Unknown variable {:?}", ref_entity)).unwrap()
+    *names.get(ref_entity).ok_or(failure::format_err!("Unknown variable to convert into SMT {:?}\nnames: {:?}", ref_entity, names)).unwrap()
 //    match place.base {
 //        PlaceBase::Local(local) => {
 //            let name = names.get(local);
@@ -179,12 +181,14 @@ fn smt_from_op(
 //    use lambdal::Op as O;
 //    use common::Op2;
 
-    let expr = &[smt_from_expr(s, names, expr)];
+    let exprs = &[smt_from_expr(s, names, expr)];
 
-    match op {
-        UnaryOp::Not => s.assert(core::OpCodes::Not, expr),
-        UnaryOp::Neg => s.assert(integer::OpCodes::Neg, expr),
-    }
+    let res = match op {
+        UnaryOp::Not => s.assert(core::OpCodes::Not, exprs),
+        UnaryOp::Neg => s.assert(integer::OpCodes::Neg, exprs),
+    };
+    println!("Emitted unary op {} from {}", s.expand_assertion(res), expr);
+    res
 }
 
 fn smt_from_binop(
@@ -420,7 +424,7 @@ pub fn smt_from_expr(
     expr: &Expr) -> <Solver as SMTBackend>::Idx {
     use Expr as E;
 
-    match expr {
+    let res = match expr {
         E::V => unimplemented!(),
         E::Const(_const) => smt_from_const(s, _const),
         E::Var(ref_entity) => smt_from_var(s, names, ref_entity),
@@ -447,7 +451,10 @@ pub fn smt_from_expr(
 //        _ => {
 //            panic!("smt_from_expr unimplemented {:?}", q);
 //        }
-    }
+    };
+
+    println!("Emitted expr {} from {}", s.expand_assertion(res), expr);
+    res
 }
 
 #[test]

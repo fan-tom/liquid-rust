@@ -358,7 +358,7 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
             let mut locals_init_lqt = self.init_locals_refinements();
             let self_refinement = self.self_refinement();
             let self_precondition = self_refinement.pre().clone();
-            let precond = Self::preconditions_to_inference_ctx(&self_precondition, self.mir, self.def_id)?;
+            let precond = self.preconditions_to_inference_ctx(&self_precondition, self.mir, self.def_id)?;
             locals_init_lqt.merge(precond);
             vec![locals_init_lqt]
         } else {
@@ -384,19 +384,41 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
         self.restriction_registry.get_or_extract_restrictions(func_id, self.tcx)
     }
 
-    fn postcondition_to_inference_ctx(restriction: &RestrictionExpr, mir: &'tcx Body, fun_id: DefId) -> Result<InferenceCtx<'tcx>, failure::Error> {
+    fn postcondition_to_inference_ctx(restriction: &RestrictionExpr, mir: &'tcx Body, fun_id: DefId, tcx: TyCtxt<'tcx>) -> Result<InferenceCtx<'tcx>, failure::Error> {
         let mut ctx = InferenceCtx::default();
-        let refinement = Refinement::new(mir.return_ty().kind.clone(), restriction.clone().fold(&mut RestrictionToExprConverter(mir, ANN_RET_NAME, fun_id))?.into());
+        let ret_ty = mir.return_ty().kind.clone();
+        let v_ty = (&ret_ty).try_into().ok();
+        let refinement = Refinement::new(ret_ty, restriction.clone().fold(&mut RestrictionToExprConverter {
+            mir: mir,
+            name: ANN_RET_NAME,
+            fun_id: fun_id,
+            typer: DefaultTyper {
+                bodies: &hashmap! { fun_id => mir },
+                tcx,
+                v_ty
+            },
+        })?.into());
         ctx.refine(RefinableEntity::from_place(RETURN_PLACE.into(), fun_id), refinement);
         Ok(ctx)
     }
 
-    fn preconditions_to_inference_ctx(restrictions: &RestrictionMap, mir: &'tcx Body, fun_id: DefId) -> Result<InferenceCtx<'tcx>, failure::Error> {
+    fn preconditions_to_inference_ctx(&self, restrictions: &RestrictionMap, mir: &'tcx Body, fun_id: DefId) -> Result<InferenceCtx<'tcx>, failure::Error> {
         restrictions
             .into_iter()
             .try_fold(InferenceCtx::default(), |mut ctx, (var, restriction)| -> Result<_, failure::Error> {
-                let (local, local_decl) = mir.local_by_name(mir.args_iter(), &var).ok_or(failure::format_err!("Unknown variable {}", var))?;
-                let refinement = Refinement::new(local_decl.ty.kind.clone(), restriction.clone().fold(&mut RestrictionToExprConverter(mir, &var, fun_id))?.into());
+                let (local, local_decl) = mir.local_by_name(mir.args_iter(), &var).ok_or(failure::format_err!("Unknown variable in precondition: {}", var))?;
+                let arg_ty = local_decl.ty.kind.clone();
+                let v_ty = (&arg_ty).try_into().ok();
+                let refinement = Refinement::new(arg_ty, restriction.clone().fold(&mut RestrictionToExprConverter {
+                    mir,
+                    name: &var,
+                    fun_id,
+                    typer: DefaultTyper {
+                        bodies: &hashmap! { fun_id => mir },
+                        tcx: self.tcx,
+                        v_ty,
+                    },
+                })?.into());
                 ctx.refine(RefinableEntity::from_place(local.into(), fun_id), refinement);
                 Ok(ctx)
             })
@@ -455,7 +477,7 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
         // Argument is either constant or place
         // If it is place, its refinement already exists in ctx
         // If it is constant, we need to add refinement to corresponding formal argument of function
-        let mut need = Self::preconditions_to_inference_ctx(&precondition, fun_body, func_def)?;
+        let mut need = self.preconditions_to_inference_ctx(&precondition, fun_body, func_def)?;
         // Need to convert restriction map to refinement map, build Z3 expression and check its inverse to be not provable
         let bodies = hashmap! {self.def_id => self.mir, func_def => fun_body};
         let pp = |ctx: &mut InferenceCtx| {
@@ -484,21 +506,29 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
     }
 
     // checks that /\P->/\Q holds (!(/\P->/\Q) is not provable)
-    fn check_implication_holds(&self, p: &mut InferenceCtx<'tcx>, q: &mut InferenceCtx<'tcx>, bodies: &HashMap<DefId, &Body<'tcx>>) -> Result<Option<String>, failure::Error> {
+    fn check_implication_holds(&mut self, p: &mut InferenceCtx<'tcx>, q: &mut InferenceCtx<'tcx>, bodies: &HashMap<DefId, &Body<'tcx>>) -> Result<Option<String>, failure::Error> {
         println!("Check implication holds:\np: {}\nq: {}", p, q);
         let z3exec = std::env::var("LIQUID_Z3").ok();
-        let mut z3 = z3exec.map(|e| Z3::new_with_binary(&e)).unwrap_or_default();
-        let mut solver = SMTLib2::new(Some(LIA));
-        solver.set_logic(&mut z3);
+        // let mut z3 = z3exec.map(|e| Z3::new_with_binary(&e)).unwrap_or_default();
+        let mut solver = SMTLib2::new(Some(QF_AUFBV));
+        // solver.set_logic(&mut z3);
         let mut names = HashMap::new();
         let mut name_registry = NameRegistry::new(bodies);
+
+//        let mut smt_ctx = SmtCtx::new_default(bodies, self.tcx, solver, names);
+        let mut smt_converter = DefaultSmtConverterCtx {
+            solver,
+            names,
+        };
+
         let mut processor = |ctx: &mut InferenceCtx<'tcx>| {
             for (var, reft) in ctx.refinements_mut() {
-                if !names.contains_key(var) {
+                if smt_converter.get_name(var).is_none() {
                     let ty = reft.base_type();
-                    if let Some(sort) = sort_from_ty(ty) {
+                    if let Some(sort) = ty.to_smt(&mut smt_converter) {
                         let name = name_registry.get(var.clone());
-                        names.insert(var.clone(), solver.new_var(Some(name), sort));
+                        let idx = smt_converter.new_var(Some(name), sort);
+                        smt_converter.add_name(var.clone(), idx);
                     } else {
                         println!("Cannot convert type {:?} of var: {} to sort, ignoring", ty, var);
                     }
@@ -517,29 +547,42 @@ impl<'tcx, R: RestrictionRegistry> MirAnalyzer<'tcx, R> {
         processor(p);
         processor(q);
 
+        let mut smt_ctx = SmtCtx::new(
+            DefaultTyper {
+                bodies,
+                tcx: self.tcx,
+                // no more Vs
+                v_ty: None,
+            },
+            smt_converter,
+        );
+
         println!("Check implication holds after :\np: {}\nq: {}", p, q);
         let ps = p.predicates()
-            .map(|e| smt_from_pred(&mut solver, &names, &e))
-            .collect::<Vec<_>>();
+//            .map(|e| smt_from_pred(&mut solver, &names, &e))
+            .map(|e| e.to_smt(&mut smt_ctx))
+            .collect::<Option<Vec<_>>>().unwrap();
         let qs = q.predicates()
-            .map(|e| smt_from_pred(&mut solver, &names, &e))
-            .collect::<Vec<_>>();
+            .map(|e| e.to_smt(&mut smt_ctx))
+            .collect::<Option<Vec<_>>>().unwrap();
 
-//        let p_all = match ps.len() {
-//            0 => solver.new_const(core::OpCodes::Const(true)),
-//            1 => ps[0],
-//            _ => solver.assert(core::OpCodes::And, &ps),
-//        };
+       // let p_all = match ps.len() {
+       //     0 => smt_ctx.new_const(core::OpCodes::Const(true)),
+       //     1 => ps[0],
+       //     _ => smt_ctx.assert(core::OpCodes::And, &ps),
+       // };
         let q_all = match qs.len() {
-            0 => solver.new_const(core::OpCodes::Const(true)),
+            0 => smt_ctx.new_const(core::OpCodes::Const(true)),
             1 => qs[0],
-            _ => solver.assert(core::OpCodes::And, &qs),
+            _ => smt_ctx.assert(core::OpCodes::And, &qs),
         };
-//        let imply = solver.assert(core::OpCodes::Imply, &[p_all, q_all]);
-        let not_imply = solver.assert(core::OpCodes::Not, &[q_all]);
+        // let imply = smt_ctx.assert(core::OpCodes::Imply, &[p_all, q_all]);
+        let not_imply = smt_ctx.assert(core::OpCodes::Not, &[q_all]);
 
-        println!("Solver: {:#?}", solver);
-        let (_, sat) = solver.solve(&mut z3, false);
+        println!("Names: {:#?}\nQuerying resulting predicate: {}\n", name_registry.names, smt_ctx.expand_assertion(not_imply));
+        // println!("Asserts: {}\n", smt_ctx.generate_asserts(true));
+        let mut scope = self.z3.scope();
+        let (_, sat) = smt_ctx.solve(&mut *scope, true);
 
         match sat {
             SMTRes::Unsat(_, _) => Ok(None),

@@ -48,6 +48,8 @@ mod folder;
 mod utils;
 mod error;
 mod restriction_extractor;
+mod to_smt;
+mod smt_ctx;
 
 mod typable;
 declare_lint!(LIQUID_RUST_LINT, Deny, "Liquid rust");

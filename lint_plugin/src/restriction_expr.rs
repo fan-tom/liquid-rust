@@ -1,6 +1,14 @@
-pub use crate::expr::{UnaryOp, BinOp, Const, Expr as ParsedExpr};
+pub use crate::expr::{UnaryOp, BinOp, Expr as ParsedExpr};
 use derive_more::*;
 use crate::visitor::{Visitable, Visitor};
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
+pub enum Const {
+    #[display(fmt = "{}", _0)]
+    Bool(bool),
+    #[display(fmt = "{}", _0)]
+    Int(i128),
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Display)]
 pub enum Expr {
@@ -48,11 +56,13 @@ impl Expr {
 
 pub mod fold {
     use super::{Expr, UnaryOp, BinOp, Const};
+    use crate::typable::Ty;
+
     pub trait Folder<'e, T>
     {
         fn fold_v(&mut self) -> T;
         fn fold_var(&mut self, var: &'e str) -> T;
-        fn fold_const(&mut self, _const: &'e Const) -> T;
+        fn fold_const(&mut self, _const: &'e Const, ty: Option<Ty>) -> T;
         fn fold_unary_op(&mut self, op: UnaryOp, expr: &'e Expr) -> T;
         fn fold_binary_op(&mut self, op: BinOp, lhs: &'e Expr, rhs: &'e Expr) -> T;
     }
@@ -62,7 +72,7 @@ pub mod fold {
             match self {
                 Expr::V => folder.fold_v(),
                 Expr::Var(str) => folder.fold_var(str),
-                Expr::Const(c) => folder.fold_const(c),
+                Expr::Const(c) => folder.fold_const(c, None),
                 Expr::UnaryOp(op, expr) => folder.fold_unary_op(*op, expr),
                 Expr::BinaryOp(op, lhs, rhs) => folder.fold_binary_op(*op, lhs, rhs)
             }

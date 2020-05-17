@@ -13,7 +13,7 @@ peg::parser!{grammar restriction() for str {
     //float -> f64 = n:$(int ("." [0-9]*)? (^"e" int)?) {n.parse().unwrap()}
 
     rule int() -> &'input str = $(("+" / "-")? ['0'..='9']+)
-    pub rule integer() -> u64 = n:int() {n.parse().unwrap()}
+    pub rule integer() -> i128 = n:int() {n.parse().unwrap()}
 
     rule paren<T>(x: rule<T>) -> T = "(" _ v:x() _ ")" {v}
     rule quoted<T>(x: rule<T>) -> T = "\"" _ v:x() _ "\"" {v}
@@ -38,7 +38,7 @@ peg::parser!{grammar restriction() for str {
         --
         i:ident() {Expr::Var(i.to_string())}
         --
-        n:integer() {Expr::Const(Const::Int{bits: u128::from(n), size: 64})}
+        n:integer() {Expr::Const(Const::Int(n))}
         --
         e:paren(<arith_expr()>) {e}
     }
@@ -113,7 +113,7 @@ impl RestrictionParser {
 fn check_single() -> Result<(), failure::Error> {
     let pred = r#"("b: abc_d >30")"#;
     let actual_expr = RestrictionParser::parse_preconditions(pred)?;
-    let expected_expr = ("b", Expr::BinaryOp(BinOp::Gt, box Expr::Var("abc_d".into()), box Expr::Const(Const::Int{ bits: 30 as u128, size: 64})));
+    let expected_expr = ("b", Expr::BinaryOp(BinOp::Gt, box Expr::Var("abc_d".into()), box Expr::Const(Const::Int(30))));
     assert_eq!(actual_expr, vec![expected_expr]);
     Ok(())
 }
@@ -130,7 +130,7 @@ fn check_complex() -> Result<(), failure::Error> {
                                  box Expr::BinaryOp(
                                      BinOp::Gt,
                                      box Expr::Var("a".to_string()),
-                                     box Expr::Const(Const::Int { size: 64, bits: 30 })),
+                                     box Expr::Const(Const::Int(30))),
                                  box Expr::BinaryOp(
                                      BinOp::Eq,
                                      box Expr::Var("d".to_string()),

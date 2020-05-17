@@ -33,7 +33,7 @@ impl<'e, 'tcx, T: Typer<'tcx>> Folder<'e, Result<Expr<'tcx>, failure::Error>> fo
         }) {
             Ok(Expr::from_place(place, self.fun_id))
         } else {
-            Err(failure::format_err!("Unknown variable {}", var))
+            Err(failure::format_err!("Unknown variable to convert into place: {}", var)).unwrap()
         }
     }
 

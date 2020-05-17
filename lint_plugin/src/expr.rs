@@ -16,6 +16,12 @@ pub enum BinOp {
     Sub,
     #[display(fmt = "*")]
     Mul,
+    #[display(fmt = "add_overflows?")]
+    AddOverflows,
+    #[display(fmt = "sub_overflows?")]
+    SubOverflows,
+    #[display(fmt = "mul_overflows?")]
+    MulOverflows,
     #[display(fmt = "/")]
     Div,
     #[display(fmt = "<")]
@@ -45,6 +51,21 @@ pub enum BinOp {
     #[display(fmt = "&&")]
     And,
 }
+
+impl BinOp {
+    pub fn overflows(op: Self) -> Self {
+        match op {
+            BinOp::Add => BinOp::AddOverflows,
+            BinOp::Sub => BinOp::SubOverflows,
+            BinOp::Mul => BinOp::MulOverflows,
+            BinOp::AddOverflows
+            | BinOp::SubOverflows
+            | BinOp::MulOverflows => op,
+            _ => panic!("Binary operator {} has no overflows check compliment", op)
+        }
+    }
+}
+
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum UnaryOp {

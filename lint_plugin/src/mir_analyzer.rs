@@ -637,26 +637,44 @@ impl<'tcx, 'z, R: RestrictionRegistry> MirAnalyzer<'tcx, 'z, R> {
             Rvalue::Cast(_, _, _) => unimplemented!("cast"),
 
             // { v: (ty, bool) | v.0 = lhs <op> rhs }
-            | Rvalue::CheckedBinaryOp(op, ref lhs, ref rhs) => {
+            | Rvalue::CheckedBinaryOp(op, ref lhs_op, ref rhs_op) => {
 //                unimplemented!("checked op")
-                let oper = Expr::binary_op(op.into(), Expr::from_operand(lhs.clone(), self.def_id), Expr::from_operand(rhs.clone(), self.def_id));
+                let lhs = Expr::from_operand(lhs_op.clone(), self.def_id);
+                let rhs = Expr::from_operand(rhs_op.clone(), self.def_id);
+                let oper = Expr::binary_op(op.into(), lhs.clone(), rhs.clone());
                 // { v: ty | v = lhs <op> rhs }
                 let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box oper);
                 let pred = expr.into();
-                let lhs_ty = lhs.ty(self.mir.local_decls(), self.tcx);
-                let rhs_ty = rhs.ty(self.mir.local_decls(), self.tcx);
+                let lhs_ty = lhs_op.ty(self.mir.local_decls(), self.tcx);
+                let rhs_ty = rhs_op.ty(self.mir.local_decls(), self.tcx);
                 let op_ty = op.ty(self.tcx, lhs_ty, rhs_ty);
-                let rhs_lqt = Refinement::new(op_ty.kind.clone(), pred);
+                let value_lqt = Refinement::new(op_ty.kind.clone(), pred);
+                let projection = target_place.projection.to_vec();
                 let value_place = Place {
-                    base: target_place.base,
+                    base: target_place.base.clone(),
                     projection: {
-                        let mut projection = target_place.projection.to_vec();
+                        let mut projection = projection.clone();
                         projection.push(ProjectionElem::Field(Field::from(0usize), op_ty));
                         self.tcx.intern_place_elems(&projection)
                     },
                 };
-                ctx.refine(RefinableEntity::from_place(value_place, self.def_id), rhs_lqt);
+                let flag_place = Place {
+                    base: target_place.base,
+                    projection: {
+                        let mut projection = projection.clone();
+                        projection.push(ProjectionElem::Field(Field::from(1usize), self.tcx.mk_bool()));
+                        self.tcx.intern_place_elems(&projection)
+                    },
+                };
+                let value_re = RefinableEntity::from_place(value_place, self.def_id);
+                ctx.refine(value_re, value_lqt);
+
+                let result_overflows = Expr::v_eq(Expr::binary_op(BinOp::overflows(op.into()), lhs, rhs)).into();
+                let flag_lqt = Refinement::new(TyKind::Bool, result_overflows);
+                // TODO: turn on back
+                ctx.refine(RefinableEntity::from_place(flag_place, self.def_id), flag_lqt);
             }
+            // TODO: check here that overflow is impossible
             | Rvalue::BinaryOp(op, ref lhs, ref rhs) => {
                 let oper = Expr::binary_op(op.into(), Expr::from_operand(lhs.clone(), self.def_id), Expr::from_operand(rhs.clone(), self.def_id));
                 // { v: ty | v = lhs <op> rhs }

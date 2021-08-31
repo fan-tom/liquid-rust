@@ -2,12 +2,10 @@ use rustproof_libsmt::backends::{z3::Z3 as Imp, smtlib2::SMTProc};
 use std::{
     io::{
         Read,
-        Seek,
         BufReader,
         self
     },
     fs::File,
-    ffi::OsStr,
     env::VarError,
 };
 use std::ops::{Deref, DerefMut};
@@ -49,6 +47,10 @@ impl Z3 {
         let mut content = String::new();
         file.read_to_string(&mut content)?;
         self.inner.write(content).map_err(|_| ErrorKind::Other.into())
+    }
+
+    pub fn feed_string(&mut self, content: &str) -> Result<(), String> {
+        self.inner.write(content)
     }
 
     fn push(&mut self) -> Result<(), String> {

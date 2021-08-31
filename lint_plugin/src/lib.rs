@@ -1,5 +1,6 @@
 #![feature(plugin_registrar)]
 #![feature(box_syntax, rustc_private, box_patterns, entry_insert, try_trait, associated_type_defaults, type_ascription)]
+#![allow(unused_variables, unreachable_code, unreachable_patterns, deprecated)]
 
 #[macro_use]
 extern crate rustc;
@@ -31,6 +32,8 @@ use crate::{
     },
     restriction_extractor::extract_restrictions
 };
+
+use std::include_str;
 
 mod z3_interface;
 mod refined_type;
@@ -66,7 +69,8 @@ struct LatePass {
 impl LatePass {
     fn new() -> Self {
         let mut z3 = z3::Z3::default();
-        z3.feed_file("./prelude.smt2").expect("Cannot feed prelude");
+        let prelude = include_str!("../resources/prelude.smt2");
+        z3.feed_string(prelude).expect("Cannot feed prelude");
         Self {
             z3,
             refinement_registry: Default::default(),

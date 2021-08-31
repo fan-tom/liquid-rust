@@ -101,3 +101,5 @@
     (= #b1 ((_ extract 128 128) (bvadd ext_x ext_y)))
     )
   )
+; show bitvectors as (_ bv# #) instead of hexadecimal
+(set-option :pp.bv-literals false)

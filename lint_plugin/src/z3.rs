@@ -36,7 +36,7 @@ impl DerefMut for Scope<'_> {
 
 impl Drop for Scope<'_> {
     fn drop(&mut self) {
-        self.z3.pop();
+        let _ = self.z3.pop();
     }
 }
 

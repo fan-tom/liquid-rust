@@ -40,7 +40,6 @@ use rustproof_libsmt::{
         backend::{SMTBackend, SMTRes}
     },
     theories::core,
-    logics::lia::LIA
 };
 use crate::z3::Z3;
 use maplit::*;
@@ -530,9 +529,9 @@ impl<'tcx, 'z, R: RestrictionRegistry> MirAnalyzer<'tcx, 'z, R> {
         println!("Check implication holds:\np: {}\nq: {}", p, q);
         let z3exec = std::env::var("LIQUID_Z3").ok();
         // let mut z3 = z3exec.map(|e| Z3::new_with_binary(&e)).unwrap_or_default();
-        let mut solver = SMTLib2::new(Some(QF_AUFBV));
+        let solver = SMTLib2::new(Some(QF_AUFBV));
         // solver.set_logic(&mut z3);
-        let mut names = HashMap::new();
+        let names = HashMap::new();
         let mut name_registry = NameRegistry::new(bodies);
 
 //        let mut smt_ctx = SmtCtx::new_default(bodies, self.tcx, solver, names);
@@ -629,7 +628,6 @@ impl<'tcx, 'z, R: RestrictionRegistry> MirAnalyzer<'tcx, 'z, R> {
                     Operand::Constant(box c) => {
                         let expr = Expr::v_eq(c.literal.into());
                         Refinement::new(c.literal.ty.kind.clone(), expr.into())
-//                        unimplemented!("constant assign")
                     }
                 };
                 ctx.refine(RefinableEntity::from_place(target_place, self.def_id), rhs_lqt);

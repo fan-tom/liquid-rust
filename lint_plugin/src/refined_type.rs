@@ -214,7 +214,7 @@ impl<'tcx> Refinement<'tcx> {
                 .map(|r| r.predicate)
                 .map(Predicate::negated)
                 .collect();
-            let mut pred = Predicate::from_preds(preds);
+            let pred = Predicate::from_preds(preds);
             Ok(Self::new(base_type, pred.negated()))
         } else {
             Err(err_msg("Incompatible basic types"))

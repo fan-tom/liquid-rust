@@ -1,0 +1,78 @@
+digraph __crate__ {
+subgraph cluster_Mir_0_17 {
+    graph [fontname="monospace"];
+    node [fontname="monospace"];
+    edge [fontname="monospace"];
+    label=<fn accepts_nonzero(_1: i32) -&gt; i32<br align="left"/>>;
+    bb0__0_17 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">0</td></tr><tr><td align="left" balign="left">_0 = _1<br/></td></tr><tr><td align="left">return</td></tr></table>>];
+}
+subgraph cluster_Mir_0_12 {
+    graph [fontname="monospace"];
+    node [fontname="monospace"];
+    edge [fontname="monospace"];
+    label=<fn bar(_1: i32) -&gt; i32<br align="left"/>let _2: i32; // b<br align="left"/>let mut _3: i32;<br align="left"/>let mut _4: (i32, bool);<br align="left"/>let _5: i32; // c<br align="left"/>let mut _6: i32;<br align="left"/>>;
+    bb0__0_12 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">0</td></tr><tr><td align="left" balign="left">StorageLive(_2)<br/>StorageLive(_3)<br/>_3 = _1<br/></td></tr><tr><td align="left">_2 = const accepts_nonzero(move _3)</td></tr></table>>];
+    bb1__0_12 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">1</td></tr><tr><td align="left" balign="left">StorageDead(_3)<br/>_4 = CheckedAdd(_1, const 1i32)<br/></td></tr><tr><td align="left">assert(!move (_4.1: bool), &quot;attempt to add with overflow&quot;)</td></tr></table>>];
+    bb2__0_12 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">2</td></tr><tr><td align="left" balign="left">_1 = move (_4.0: i32)<br/>StorageLive(_5)<br/>StorageLive(_6)<br/>_6 = _1<br/></td></tr><tr><td align="left">_5 = const accepts_nonzero(move _6)</td></tr></table>>];
+    bb3__0_12 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">3</td></tr><tr><td align="left" balign="left">StorageDead(_6)<br/>_0 = _5<br/>StorageDead(_5)<br/>StorageDead(_2)<br/></td></tr><tr><td align="left">return</td></tr></table>>];
+    bb0__0_12 -> bb1__0_12 [label="return"];
+    bb1__0_12 -> bb2__0_12 [label=""];
+    bb2__0_12 -> bb3__0_12 [label="return"];
+}
+subgraph cluster_Mir_0_14 {
+    graph [fontname="monospace"];
+    node [fontname="monospace"];
+    edge [fontname="monospace"];
+    label=<fn main() -&gt; ()<br align="left"/>let _1: i32;<br align="left"/>>;
+    bb0__0_14 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">0</td></tr><tr><td align="left" balign="left">StorageLive(_1)<br/></td></tr><tr><td align="left">_1 = const returns_positive(const 1i32)</td></tr></table>>];
+    bb1__0_14 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">1</td></tr><tr><td align="left" balign="left">StorageDead(_1)<br/></td></tr><tr><td align="left">return</td></tr></table>>];
+    bb0__0_14 -> bb1__0_14 [label="return"];
+}
+subgraph cluster_Mir_0_13 {
+    graph [fontname="monospace"];
+    node [fontname="monospace"];
+    edge [fontname="monospace"];
+    label=<fn foo(_1: i32, _2: bool, _3: bool) -&gt; bool<br align="left"/>let mut _4: i32; // b<br align="left"/>let mut _5: bool;<br align="left"/>let mut _6: i32;<br align="left"/>let mut _7: (i32, bool);<br align="left"/>let mut _8: i32;<br align="left"/>let mut _9: i32;<br align="left"/>let mut _10: bool;<br align="left"/>let mut _11: i32;<br align="left"/>let mut _12: (i32, bool);<br align="left"/>let mut _13: i32;<br align="left"/>let mut _14: i32;<br align="left"/>let mut _15: i32;<br align="left"/>>;
+    bb0__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">0</td></tr><tr><td align="left" balign="left">StorageLive(_4)<br/>_4 = const 1i32<br/>StorageLive(_5)<br/>StorageLive(_6)<br/>_6 = _1<br/>_5 = Lt(move _6, const 5i32)<br/>StorageDead(_6)<br/></td></tr><tr><td align="left">switchInt(_5)</td></tr></table>>];
+    bb1__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">1</td></tr><tr><td align="left" balign="left">_7 = CheckedMul(_4, const 2i32)<br/></td></tr><tr><td align="left">assert(!move (_7.1: bool), &quot;attempt to multiply with overflow&quot;)</td></tr></table>>];
+    bb2__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">2</td></tr><tr><td align="left" balign="left">_4 = move (_7.0: i32)<br/>StorageLive(_8)<br/>StorageLive(_9)<br/>_9 = _4<br/></td></tr><tr><td align="left">_8 = const accepts_nonzero(move _9)</td></tr></table>>];
+    bb3__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">3</td></tr><tr><td align="left" balign="left">StorageDead(_9)<br/>_1 = move _8<br/>StorageDead(_8)<br/></td></tr><tr><td align="left">goto</td></tr></table>>];
+    bb4__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">4</td></tr><tr><td align="left" balign="left">StorageDead(_5)<br/></td></tr><tr><td align="left">goto</td></tr></table>>];
+    bb5__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">5</td></tr><tr><td align="left" balign="left">StorageLive(_10)<br/>StorageLive(_11)<br/>_11 = _1<br/>_10 = Lt(move _11, const 5i32)<br/>StorageDead(_11)<br/></td></tr><tr><td align="left">switchInt(_10)</td></tr></table>>];
+    bb6__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">6</td></tr><tr><td align="left" balign="left">StorageDead(_10)<br/>StorageLive(_15)<br/>_15 = _4<br/>_0 = Gt(move _15, const 20i32)<br/>StorageDead(_15)<br/>StorageDead(_4)<br/></td></tr><tr><td align="left">return</td></tr></table>>];
+    bb7__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">7</td></tr><tr><td align="left" balign="left">_12 = CheckedMul(_4, const 2i32)<br/></td></tr><tr><td align="left">assert(!move (_12.1: bool), &quot;attempt to multiply with overflow&quot;)</td></tr></table>>];
+    bb8__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">8</td></tr><tr><td align="left" balign="left">_4 = move (_12.0: i32)<br/>StorageLive(_13)<br/>StorageLive(_14)<br/>_14 = _4<br/></td></tr><tr><td align="left">_13 = const accepts_nonzero(move _14)</td></tr></table>>];
+    bb9__0_13 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">9</td></tr><tr><td align="left" balign="left">StorageDead(_14)<br/>_1 = move _13<br/>StorageDead(_13)<br/>StorageDead(_10)<br/></td></tr><tr><td align="left">goto</td></tr></table>>];
+    bb0__0_13 -> bb4__0_13 [label="false"];
+    bb0__0_13 -> bb1__0_13 [label="otherwise"];
+    bb1__0_13 -> bb2__0_13 [label=""];
+    bb2__0_13 -> bb3__0_13 [label="return"];
+    bb3__0_13 -> bb4__0_13 [label=""];
+    bb4__0_13 -> bb5__0_13 [label=""];
+    bb5__0_13 -> bb6__0_13 [label="false"];
+    bb5__0_13 -> bb7__0_13 [label="otherwise"];
+    bb7__0_13 -> bb8__0_13 [label=""];
+    bb8__0_13 -> bb9__0_13 [label="return"];
+    bb9__0_13 -> bb5__0_13 [label=""];
+}
+subgraph cluster_Mir_0_16 {
+    graph [fontname="monospace"];
+    node [fontname="monospace"];
+    edge [fontname="monospace"];
+    label=<fn returns_positive(_1: i32) -&gt; i32<br align="left"/>let mut _2: i32;<br align="left"/>>;
+    bb0__0_16 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">0</td></tr><tr><td align="left" balign="left">StorageLive(_2)<br/></td></tr><tr><td align="left">_2 = const accepts_only_zero(const 0i32)</td></tr></table>>];
+    bb1__0_16 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">1</td></tr><tr><td align="left">_0 = const accepts_nonzero(move _2)</td></tr></table>>];
+    bb2__0_16 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">2</td></tr><tr><td align="left" balign="left">StorageDead(_2)<br/></td></tr><tr><td align="left">return</td></tr></table>>];
+    bb0__0_16 -> bb1__0_16 [label="return"];
+    bb1__0_16 -> bb2__0_16 [label="return"];
+}
+subgraph cluster_Mir_0_15 {
+    graph [fontname="monospace"];
+    node [fontname="monospace"];
+    edge [fontname="monospace"];
+    label=<fn accepts_only_zero(_1: i32) -&gt; i32<br align="left"/>let mut _2: i32;<br align="left"/>let mut _3: (i32, bool);<br align="left"/>>;
+    bb0__0_15 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">0</td></tr><tr><td align="left" balign="left">StorageLive(_2)<br/>_2 = _1<br/>_3 = CheckedAdd(move _2, const 1i32)<br/></td></tr><tr><td align="left">assert(!move (_3.1: bool), &quot;attempt to add with overflow&quot;)</td></tr></table>>];
+    bb1__0_15 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">1</td></tr><tr><td align="left" balign="left">_0 = move (_3.0: i32)<br/>StorageDead(_2)<br/></td></tr><tr><td align="left">return</td></tr></table>>];
+    bb0__0_15 -> bb1__0_15 [label=""];
+}
+}

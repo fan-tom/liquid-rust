@@ -1,0 +1,37 @@
+num = @{ int ~ ("." ~ ASCII_DIGIT*)? ~ (^"e" ~ int)? }
+    int = { ("+" | "-")? ~ ASCII_DIGIT+ }
+
+ident = {ASCII_ALPHA ~ ASCII_ALPHANUMERIC*}
+
+arith_operator = _{ add | subtract | multiply | divide }
+    add      = { "+" }
+    subtract = { "-" }
+    multiply = { "*" }
+    divide   = { "/" }
+
+term = _{ num | ident | "(" ~ arith_expr ~ ")" }
+arith_expr = { term ~ (arith_operator ~ term)* }
+
+rel_operator = _{eq | lt | le | gt | ge | neq}
+    eq = {"=="}
+    neq = {"!="}
+    lt = {"<"}
+    le = {"<="}
+    gt = {">"}
+    ge = {">="}
+
+relation = {arith_expr ~ rel_operator ~ arith_expr}
+
+bool_expr = {relation | "true" | "false"}
+
+log_operator = _{and | or | imp | equiv}
+    and = {"&&"}
+    or = {"||"}
+    imp = {"=>"}
+    equiv = {"<=>"}
+
+predicate = {bool_expr ~ (log_operator ~ bool_expr)*}
+
+restriction = _{ SOI ~ predicate ~ EOI }
+
+WHITESPACE = _{ " " | "\t" }

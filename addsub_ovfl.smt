@@ -1,0 +1,15 @@
+(set-logic QF_BV)
+(push)
+(define-fun bvu8add-overflows ((x (_ BitVec 8)) (y (_ BitVec 8))) Bool
+  (let (
+        (ext_x ((_ zero_extend 1) x))
+        (ext_y ((_ zero_extend 1) y))
+        )
+    (= #b1 ((_ extract 8 8) (bvadd ext_x ext_y)))
+    )
+  )
+(declare-const a Bool)
+(assert (bvu8add-overflows #b11111110 #b00000010))
+(check-sat)
+(pop)
+(push)

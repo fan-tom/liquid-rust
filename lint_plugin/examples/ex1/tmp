@@ -1,0 +1,87 @@
+(declare-fun x_to_cmp_eq_with_0 () (_ BitVec 32))
+(declare-fun x_to_pass_to_call () (_ BitVec 32))
+(declare-fun x_eq_0? () Bool)
+(declare-fun x () (_ BitVec 32))
+(declare-fun x_slt_0? () Bool)
+(declare-fun return () (_ BitVec 32))
+(declare-fun x_to_cmp_le_with_0 () (_ BitVec 32))
+(assert
+    (not
+        (and
+            (not
+                (and
+                    (= x_eq_0?
+                        (=
+                            (bvcomp x_to_cmp_eq_with_0 (_ bv0 32))
+                            (_ bv1 1)
+                        )
+                    )
+                    (= x_eq_0? false)
+                )
+            )
+            (not
+                (and
+                    (= x_eq_0?
+                        (=
+                            (bvcomp x_to_cmp_eq_with_0 (_ bv0 32))
+                            (_ bv1 1)
+                        )
+                    )
+                    (not (= x_eq_0? false))
+                )
+            )
+        )
+    )
+)
+(assert (= (bvcomp x_to_cmp_le_with_0 x) (_ bv1 1)))
+(assert (= (bvcomp x_to_pass_to_call x) (_ bv1 1)))
+(assert (= (bvcomp x_to_cmp_eq_with_0 x) (_ bv1 1)))
+(assert
+ (not
+  (and
+   (not
+    (and
+     (= x_slt_0?
+      (bvslt x_to_cmp_le_with_0 (_ bv0 32))
+     )
+     (not (= x_slt_0? false))
+    )
+   )
+   (not
+    (and
+     (= x_slt_0?
+      (bvslt x_to_cmp_le_with_0 (_ bv0 32))
+     )
+     (= x_slt_0? false)
+    )
+   )
+  )
+ )
+)
+(assert
+ (not
+  (and
+   (not
+    (=
+     (bvcomp return (_ bv1 32))
+     (_ bv1 1)
+    )
+   )
+   (and
+    (not
+     (=
+      (bvcomp return (_ bv2 32))
+      (_ bv1 1)
+     )
+    )
+    (not
+     (=
+      (bvcomp return (bvadd x_to_pass_to_call (_ bv1 32)))
+      (_ bv1 1)
+     )
+    )
+   )
+  )
+ )
+)
+(assert (not (bvsgt return (_ bv0 32))))

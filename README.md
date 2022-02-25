@@ -185,3 +185,16 @@ that follow this reassignment. However, there may be cases where reassignment is
 which lets us proof that `b = 2`.
 The question is: do we need our own true-SSA code representation, created from MIR,
 or we can somehow encode that variables versioning and versions merging into InferenceCtx directly?
+
+03.02.2020
+
+I decided to not invent my own SSA representation, but instead track variables' versions right in InferenceCtx.
+So, InferenceCtx consists of
+- refinement map from RefinableEntity to Refinement
+- path conditions map from predecessor to path predicate (if transition from predecessor A to current BB is unconditional,
+no entry for A)
+- variables versions map from local(original variable) to RefinableEntity array, where prev_version field of each
+element points to refinable entity corresponding to previous version of some local.
+This means that each InferenceCtx has its own sequence of versions of each variable, mutated it this basic block.
+This also means that refinements in almost each InferenceCtx references refinable entities introduces in earlier
+inference contexts.

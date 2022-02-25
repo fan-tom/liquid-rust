@@ -23,7 +23,9 @@ maplit = "1.0.2"
 rayon = "1.0"
 #rustproof = { git = "https://github.com/Rust-Proof/rustproof.git" }
 z3 = "0.3"
-rustproof-libsmt = { git = "https://github.com/bpowers/libsmt.rs", rev = "2496a3e638f5" }
+#rustproof-libsmt = { git = "https://github.com/bpowers/libsmt.rs", rev = "2496a3e638f5" }
+rustproof-libsmt = { path = "../libsmt.rs" }
+
 derive_more = "0.15"
 
 [dev-dependencies]

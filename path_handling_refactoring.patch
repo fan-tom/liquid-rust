@@ -1,0 +1,236 @@
+Index: lint_plugin/src/inference_ctx.rs
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/lint_plugin/src/inference_ctx.rs b/lint_plugin/src/inference_ctx.rs
+--- a/lint_plugin/src/inference_ctx.rs	(revision f252f9556e5256817e02e924214262571fe0fef4)
++++ b/lint_plugin/src/inference_ctx.rs	(date 1580475396785)
+@@ -4,11 +4,16 @@
+ };
+ use crate::{
+     refinable_entity::RefinableEntity,
+-    refined_type::{Refinement, Predicate}
++    refined_type::{
++        Refinement,
++        Predicate,
++        BasePredicate
++    }
+ };
+ use itertools::Itertools;
++use crate::refined_type::{VarRefinement, PathRefinement};
+ 
+-pub type RefinementMap<'tcx> = HashMap<RefinableEntity<'tcx>, Refinement<'tcx>>;
++pub type RefinementMap<'tcx, Pred> = HashMap<RefinableEntity<'tcx>, Refinement<'tcx, Pred>>;
+ /// Holds inferred types of local variables;
+ #[derive(Clone, Debug, Default)]
+ pub struct InferenceCtx<'tcx> {
+@@ -33,11 +38,11 @@
+         Self { refinements }
+     }
+ 
+-    pub fn get_refinement(&self, p: &RefinableEntity<'tcx>) -> Refinement<'tcx> {
++    pub fn get_refinement(&self, p: &RefinableEntity<'tcx>) -> VarRefinement<'tcx> {
+         self.refinements[p].clone()
+     }
+ 
+-    pub fn refine(&mut self, var: RefinableEntity<'tcx>, lqt: Refinement<'tcx>) {
++    pub fn refine(&mut self, var: RefinableEntity<'tcx>, lqt: VarRefinement<'tcx>) {
+         // we need to assign more specific type to var, provided by lqt
+         // and also check that it is compatible with existing one
+         // conjoin predicates
+@@ -54,13 +59,13 @@
+         }
+     }
+ 
+-    fn updated(&self, var: RefinableEntity<'tcx>, lqt: Refinement<'tcx>) -> Self {
+-        let mut res = self.clone();
+-        res.refine(var, lqt);
+-        res
+-    }
++//    fn updated(&self, var: RefinableEntity<'tcx>, lqt: Refinement<'tcx>) -> Self {
++//        let mut res = self.clone();
++//        res.refine(var, lqt);
++//        res
++//    }
+ 
+-    pub fn refinements_mut(&mut self) -> &mut RefinementMap<'tcx> {
++    pub fn refinements_mut(&mut self) -> &mut RefinementMap<'tcx, Predicate<'tcx>> {
+         &mut self.refinements
+     }
+ 
+@@ -69,12 +74,12 @@
+     }
+ 
+     pub fn predicates<'s:'tcx>(&'s self) -> impl Iterator<Item=&'s Predicate<'tcx>> {
+-        self.refinements.values().map(|r| r.predicate())
++        self.refinements.values().map(|r| r.predicates())
+     }
+ }
+ 
+-impl<'tcx> From<RefinementMap<'tcx>> for InferenceCtx<'tcx> {
+-    fn from(refinements: RefinementMap<'tcx>) -> Self {
+-        Self::new(refinements)
+-    }
+-}
++//impl<'tcx> From<RefinementMap<'tcx>> for InferenceCtx<'tcx> {
++//    fn from(refinements: RefinementMap<'tcx>) -> Self {
++//        Self::new(refinements)
++//    }
++//}
+Index: lint_plugin/src/mir_analyzer.rs
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/lint_plugin/src/mir_analyzer.rs b/lint_plugin/src/mir_analyzer.rs
+--- a/lint_plugin/src/mir_analyzer.rs	(revision f252f9556e5256817e02e924214262571fe0fef4)
++++ b/lint_plugin/src/mir_analyzer.rs	(date 1580465420691)
+@@ -254,13 +254,13 @@
+                 if let Some(&value) = values.get(target_idx) {
+                     let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::Const(cnst(value)?));
+                     let refinement = Refinement::new(switch_ty.kind.clone(), expr.into());
+-                    base_lqt.refine(discr_re.clone(), refinement);
++                    base_lqt.refine_path(discr_re.clone(), refinement);
+                 } else {
+                     // otherwise discr is not equal to any of values
+                     for &v in values.iter() {
+                         let expr = Expr::BinaryOp(BinOp::Eq, box Expr::V, box Expr::Const(cnst(v)?));
+                         let refinement = Refinement::new(switch_ty.kind.clone(), Predicate::from_expr(expr).negated());
+-                        base_lqt.refine(discr_re.clone(), refinement);
++                        base_lqt.refine_path(discr_re.clone(), refinement);
+                     }
+                 };
+                 base_lqt
+@@ -498,7 +498,7 @@
+                         println!("Cannot convert type {:?} of var: {} to sort, ignoring", ty, var);
+                     }
+                 }
+-                *reft.predicate_mut() = reft.predicate().clone().accept(&mut |expr| {
++                *reft.predicates_mut() = reft.predicates().clone().accept(&mut |expr| {
+ //                    println!("Checking {:?}", expr);
+                     if let Expr::V = expr {
+ //                        println!("Converting v to {:?}", var);
+Index: lint_plugin/src/refined_type.rs
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/lint_plugin/src/refined_type.rs b/lint_plugin/src/refined_type.rs
+--- a/lint_plugin/src/refined_type.rs	(revision f252f9556e5256817e02e924214262571fe0fef4)
++++ b/lint_plugin/src/refined_type.rs	(date 1580477938629)
+@@ -14,20 +14,27 @@
+ };
+ 
+ #[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
+-pub enum Predicate<'tcx> {
++pub enum BasePredicate<'tcx> {
+     #[display(fmt = "{}", _0)]
+     Basic(Expr<'tcx>),
+     #[display(fmt = "not ({})", _0)]
+-    Not(Box<Predicate<'tcx>>),
++    Not(Box<BasePredicate<'tcx>>),
+     // vector of conjoined boolean expressions
+     // /\ expr(v, locals)
+-    #[display(
+-    fmt = "({})",
+-    r#"_0.iter()
+-            .map(std::string::ToString::to_string)
+-            .join(r" /\ ")"#
+-    )]
+-    Conj(Vec<Predicate<'tcx>>),
++//    #[display(
++//    fmt = "{}",
++//    r#"_0.iter()
++//            .map(std::string::ToString::to_string)
++//            .join(r" /\ ")"#
++//    )]
++//    Conj(Vec<BasePredicate<'tcx>>),
++}
++
++pub struct Predicate<'tcx> {
++    /// variable refinement predicate
++    base_predicate: BasePredicate<'tcx>,
++    /// condition under which base_predicate is valid
++    path_predicate: Option<BasePredicate<'tcx>>,
+ }
+ 
+ //#[derive(Clone, Debug, Eq, PartialEq)]
+@@ -73,14 +80,14 @@
+ 
+ impl<'tcx> Predicate<'tcx> {
+     /// a /\ b /\ c ...
+-    pub fn from_exprs(exprs: Vec<Expr<'tcx>>) -> Self {
+-        Predicate::Conj(exprs.into_iter().filter_map(|e| if e == Expr::r#true() {
+-            None
+-        } else {
+-            Some(Predicate::Basic(e))
+-        }
+-        ).collect())
+-    }
++//    pub fn from_exprs(exprs: Vec<Expr<'tcx>>) -> Self {
++//        Predicate::Conj(exprs.into_iter().filter_map(|e| if e == Expr::r#true() {
++//            None
++//        } else {
++//            Some(Predicate::Basic(e))
++//        }
++//        ).collect())
++//    }
+ 
+     fn from_preds(preds: Vec<Predicate<'tcx>>) -> Self {
+         let mut preds = preds
+@@ -144,25 +151,30 @@
+ 
+ /// The main type that represents refinement,
+ /// inferred from code or specified by programmer
+-/// {v: <base_type> | <predicate>}
+-/// Note that <predicate> may contain negated arrays of conjoined predicates
+-/// when they represent refinements from different predecessors
++/// {v: <base_type> | (<base predicate> [if <condition>])+}
++/// Here `base_predicate` is refinement itself, while optional `condition` is predicate, that denotes refinement true
++/// If there is no condition, `base_predicate` is true unconditionally
++/// base_predicate + condition = Predicate
+ #[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
+-#[display(fmt = "{{ v: {:?} | {} }}", base_type, predicate)]
+-pub struct Refinement<'tcx> {
++#[display(fmt = "{{ v: {:?} | {} }}", base_type, r#"predicates.into_iter().map(|p| format!("({})", p.to_string())).join(" \/ ")"#)]
++pub struct Refinement<'tcx, Pred> {
+     base_type: TyKind<'tcx>,
+-    predicate: Predicate<'tcx>,
++    /// refinements under different conditions, converted into `ite`-cascade
++    predicates: Vec<Pred>,
+ }
+ 
+-impl<'tcx> Refinement<'tcx> {
+-    pub fn new(base_type: TyKind<'tcx>, predicate: Predicate<'tcx>) -> Self {
+-        Self { base_type, predicate }
++pub type VarRefinement<'tcx> = Refinement<'tcx, Predicate<'tcx>>;
++pub type PathRefinement<'tcx> = Refinement<'tcx, BasePredicate<'tcx>>;
++
++impl<'tcx, Pred> Refinement<'tcx, Pred> {
++    pub fn new(base_type: TyKind<'tcx>, predicate: Pred) -> Self {
++        Self { base_type, predicates: vec![predicate] }
+     }
+     /// {v: <base_type> | true}
+     pub fn unknown(base_type: TyKind<'tcx>) -> Self {
+         Self {
+             base_type,
+-            predicate: Predicate::r#true(),
++            predicates: vec![Predicate::r#true()],
+         }
+     }
+ 
+@@ -170,11 +182,11 @@
+         &self.base_type
+     }
+ 
+-    pub fn predicate_mut(&mut self) -> &mut Predicate<'tcx> {
++    pub fn predicates_mut(&mut self) -> &mut [Predicate<'tcx>] {
+         &mut self.predicate
+     }
+ 
+-    pub fn predicate(&self) -> &Predicate<'tcx> {
++    pub fn predicates(&self) -> &[Predicate<'tcx>] {
+         &self.predicate
+     }
+ 

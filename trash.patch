@@ -1,0 +1,117 @@
+Index: lint_plugin/src/inference_ctx.rs
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/lint_plugin/src/inference_ctx.rs b/lint_plugin/src/inference_ctx.rs
+--- a/lint_plugin/src/inference_ctx.rs	(revision f252f9556e5256817e02e924214262571fe0fef4)
++++ b/lint_plugin/src/inference_ctx.rs	(date 1580481918148)
+@@ -15,22 +15,32 @@
+     // need some type here to represent qualifiable entities, such as function args,
+     // function return, locals, temps, struct fields and slice elems.
+     // seems that Place is power enough for that purpose
+-    refinements: RefinementMap<'tcx>,
++    refinements: RefinementMap<'tcx, Predicate<'tcx>>,
++    // refinements that are valid in path (if branch)
++    path_refinements: RefinementMap<'tcx, BasePredicate<'tcx>>,
+ }
+ 
+ impl fmt::Display for InferenceCtx<'_> {
+     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+-        let res = self.refinements
++        let refs = self.refinements
+             .iter()
+             .map(|(k, v)| format!("{}: {}", k, v))
+             .join("\n");
+-        write!(f, "{}", res)
++        if self.path_refinements.is_empty() {
++            write!(f, "{}", refs)
++        } else {
++            let path_refs = self.path_refinements
++                .iter()
++                .map(|(k, v)| format!("{}: {}", k, v))
++                .join("\n");
++            write!(f, "{} (path refinements: {})", refs, path_refs)
++        }
+     }
+ }
+ 
+ impl<'tcx> InferenceCtx<'tcx> {
+-    pub fn new(refinements: RefinementMap<'tcx>) -> Self {
+-        Self { refinements }
++    pub fn new(refinements: RefinementMap<'tcx, Predicate<'tcx>>) -> Self {
++        Self { refinements, ..Default::default() }
+     }
+ 
+     pub fn get_refinement(&self, p: &RefinableEntity<'tcx>) -> Refinement<'tcx> {
+@@ -48,10 +58,26 @@
+         }
+     }
+ 
++    pub fn refine_path(&mut self, var: RefinableEntity<'tcx>, lqt: PathRefinement<'tcx>) {
++        // we need to assign more specific type to var, provided by lqt
++        // and also check that it is compatible with existing one
++        // conjoin predicates
++        println!("Refining path {} with {}", var, lqt);
++        if let Some(existing_refinement) = self.path_refinements.get_mut(&var) {
++            existing_refinement.adjust(lqt).expect(&format!("var: {:?}, self: {:#?}", &var, self));
++        } else {
++            self.path_refinements.insert(var, lqt);
++        }
++    }
++
+     pub fn merge(&mut self, other: Self) {
+         for (place, refinement) in other.refinements.into_iter() {
+             self.refine(place, refinement)
+         }
++
++        for (place, refinement) in other.path_refinements.into_iter() {
++            self.refine_path(place, refinement)
++        }
+     }
+ 
+     fn updated(&self, var: RefinableEntity<'tcx>, lqt: Refinement<'tcx>) -> Self {
+@@ -64,9 +90,9 @@
+         &mut self.refinements
+     }
+ 
+-    pub fn into_inner(self) -> RefinementMap<'tcx> {
+-        self.refinements
+-    }
++//    pub fn into_refinements(self) -> RefinementMap<'tcx> {
++//        self.refinements
++//    }
+ 
+     pub fn predicates<'s:'tcx>(&'s self) -> impl Iterator<Item=&'s Predicate<'tcx>> {
+         self.refinements.values().map(|r| r.predicate())
+Index: lint_plugin/src/mir_analyzer.rs
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/lint_plugin/src/mir_analyzer.rs b/lint_plugin/src/mir_analyzer.rs
+--- a/lint_plugin/src/mir_analyzer.rs	(revision f252f9556e5256817e02e924214262571fe0fef4)
++++ b/lint_plugin/src/mir_analyzer.rs	(date 1580481795702)
+@@ -110,11 +110,11 @@
+     pub fn check(&mut self) -> Result<bool, failure::Error> {
+         let init_refinements = self.init_locals_refinements();
+         let basic_blocks = self.mir.basic_blocks();
+-        if let Some(return_bb) = basic_blocks
++        if let Some((return_bb, bb_data)) = basic_blocks
+             .iter_enumerated()
+             .find_map(|(idx, data): (_, &BasicBlockData)|
+                 if let TerminatorKind::Return = data.terminator().kind {
+-                    Some(idx)
++                    Some((idx, data))
+                 } else {
+                     None
+                 }) {
+@@ -146,7 +146,7 @@
+         let refinements: HashMap<_, Vec<Refinement>> = pred_lqt
+             .into_iter()
+             .map(|ic| {
+-                ic.into_inner()
++                ic.into_refinements()
+             })
+             .fold(HashMap::new(), |mut acc, item| {
+                 item

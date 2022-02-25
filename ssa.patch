@@ -1,0 +1,323 @@
+Index: lint_plugin/src/mir_analyzer.rs
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/lint_plugin/src/mir_analyzer.rs b/lint_plugin/src/mir_analyzer.rs
+--- a/lint_plugin/src/mir_analyzer.rs	
++++ b/lint_plugin/src/mir_analyzer.rs	
+@@ -49,6 +49,8 @@
+ use rustproof_libsmt::logics::qf_aufbv::QF_AUFBV;
+ use crate::typable::DefaultTyper;
+ use std::convert::TryInto;
++use rustc::ty::TypeFoldable;
++use crate::ssa::SSAContext;
+ 
+ type VarNameTy = String;
+ 
+@@ -73,19 +75,26 @@
+     }
+ }
+ 
++/// This type represents an analyzer that is applied to MIR of some entity (function or constant expr)
++/// identified by [`def_id`].
+ pub(super) struct MirAnalyzer<'tcx, 'z, R: RestrictionRegistry> {
+     /// DefId of entity (function/const) this MirAnalyzer belongs to
+     def_id: DefId,
++    /// Body of entity (function/const) this MirAnalyzer belongs to
+     mir: &'tcx Body<'tcx>,
+     tcx: TyCtxt<'tcx>,
+-    /// map of <local name> -> <refinements from pre/postconditions and refined type aliases>
++    /// map of local name -> refinements from pre/postconditions and refined type aliases
+     type_annotations: HashMap<VarNameTy, Refinement<'tcx>>,
++    /// registry of refinements for already processed basic blocks
+     block_inference_cache: RefCell<HashMap<BasicBlock, InferenceCtx<'tcx>>>,
+     /// registry to get globals/functions refinements from
+     restriction_registry: R,
++    /// reference to Z3 client. TODO abstract over Z3
+     z3: &'z mut Z3,
+     /// all type errors, collected during body check
+     errors: Vec<TypeError>,
++    /// SSA context used to track variable versions in entity this analyzer belongs to
++    ssa_ctx: SSAContext<'tcx>,
+ }
+ 
+ impl<'tcx, 'z, R: RestrictionRegistry> MirAnalyzer<'tcx, 'z, R> {
+@@ -106,6 +115,7 @@
+             z3,
+             restriction_registry,
+             errors: Default::default(),
++            ssa_ctx: SSAContext::new(mir.local_decls().iter_enumerated().map(|(local, _)| local.into()), def_id)
+         })
+     }
+ 
+@@ -173,7 +183,7 @@
+     }
+ 
+     /// Infer lqt when all predecessors lqt are inferred
+-    fn infer_block_lqt(&self, idx: BasicBlock, mut ctx: InferenceCtx<'tcx>) -> InferenceCtx<'tcx> {
++    fn infer_block_lqt(&mut self, idx: BasicBlock, mut ctx: InferenceCtx<'tcx>) -> InferenceCtx<'tcx> {
+         let block = &self.mir.basic_blocks()[idx];
+         for stmt in &block.statements {
+             match &stmt.kind {
+@@ -182,7 +192,8 @@
+                              lhs.ty(self.mir.local_decls(), self.tcx),
+                              rhs.ty(self.mir.local_decls(), self.tcx),
+                     );
+-                    self.infer_lqt(&rhs, lhs.clone(), &mut ctx);
++                    let var_to_write = self.ssa_ctx.consume_var_to_write(lhs.clone(), idx);
++                    self.infer_lqt(rhs, var_to_write, idx, &mut ctx);
+                     // it is SSA, we assign just once, so refine lhs
+ //                    ctx.refine(RefinableEntity::from_place(lhs.clone(), self.def_id), rhs_lqt);
+                 }
+@@ -287,7 +298,7 @@
+                             unimplemented!("Recursive call analysis is not implemented");
+                         }
+                         let tcx = self.tcx;
+-                        println!("checking function call precondition of {:?}:\nsubst: {:?}\nargs: {:?}", func_def, subst, args);
++                        println!("checking function call precondition of {:?}:\nsubst: {:?}\nargs: {:?}\ndestination: {:?}", func_def, subst, args, destination);
+                         let fun_body = self.tcx.instance_mir(Instance::new(*func_def, subst).def);
+                         let args_mapping = self.formal_to_actual_mapping(args, fun_body, *func_def);
+                         let FunctionRestrictions(precondition, postcondition) = self.function_refinement(*func_def)?.clone();
+@@ -616,14 +627,16 @@
+     }
+ 
+     /// Infer lqt of rvalue in cxt
+-    fn infer_lqt(&self, v: &Rvalue<'tcx>, target_place: Place<'tcx>, ctx: &mut InferenceCtx<'tcx>) {
++    fn infer_lqt(&mut self, v: &Rvalue<'tcx>, target: RefinableEntity<'tcx>, bb: BasicBlock, ctx: &mut InferenceCtx<'tcx>) {
+         match *v {
+             // simple assign one value to another, no less no more
+             Rvalue::Use(ref oprnd) => {
+                 let rhs_lqt = match oprnd {
+                     Operand::Copy(ref p) | Operand::Move(ref p) => {
+                         // we cannot just copy rhs refinement to lhs, as rhs may be referred in path predicate
+-                        let expr = Expr::v_eq(Expr::from_place(p.clone(), self.def_id));
++                        // also we should use last version of rhs
++                        let rhs_to_read = self.ssa_ctx.get_var_to_read(p.clone(), bb);
++                        let expr = Expr::v_eq(rhs_to_read.into());
+                         Refinement::new(p.ty(self.mir.local_decls(), self.tcx).ty.kind.clone(), expr.into())
+                     }
+                     Operand::Constant(box c) => {
+@@ -632,14 +645,14 @@
+ //                        unimplemented!("constant assign")
+                     }
+                 };
+-                ctx.refine(RefinableEntity::from_place(target_place, self.def_id), rhs_lqt);
++                ctx.refine(target, rhs_lqt);
+             }
+             Rvalue::Repeat(_, _) => unimplemented!("array literal"),
+             Rvalue::Ref(_, _, _) => unimplemented!("reference"),
+             Rvalue::Len(_) => unimplemented!("rvalue len"),
+             Rvalue::Cast(_, _, _) => unimplemented!("cast"),
+ 
+-            // { v: (ty, bool) | v.0 = lhs <op> rhs }
++            // { v: (ty, bool) | v.0 = lhs <op> rhs && v.1 = overflows (lhs <op> rhs) }
+             | Rvalue::CheckedBinaryOp(op, ref lhs_op, ref rhs_op) => {
+ //                unimplemented!("checked op")
+                 let lhs = Expr::from_operand(lhs_op.clone(), self.def_id);
+@@ -652,6 +665,7 @@
+                 let rhs_ty = rhs_op.ty(self.mir.local_decls(), self.tcx);
+                 let op_ty = op.ty(self.tcx, lhs_ty, rhs_ty);
+                 let value_lqt = Refinement::new(op_ty.kind.clone(), pred);
++                let target_place = target.place();
+                 let projection = target_place.projection.to_vec();
+                 let value_place = Place {
+                     base: target_place.base.clone(),
+@@ -662,7 +676,7 @@
+                     },
+                 };
+                 let flag_place = Place {
+-                    base: target_place.base,
++                    base: target_place.base.clone(),
+                     projection: {
+                         let mut projection = projection.clone();
+                         projection.push(ProjectionElem::Field(Field::from(1usize), self.tcx.mk_bool()));
+@@ -686,7 +700,7 @@
+                 let lhs_ty = lhs.ty(self.mir.local_decls(), self.tcx);
+                 let rhs_ty = rhs.ty(self.mir.local_decls(), self.tcx);
+                 let rhs_lqt = Refinement::new(op.ty(self.tcx, lhs_ty, rhs_ty).kind.clone(), pred);
+-                ctx.refine(RefinableEntity::from_place(target_place, self.def_id), rhs_lqt);
++                ctx.refine(target, rhs_lqt);
+             }
+ 
+             Rvalue::NullaryOp(op, rhs) => {
+@@ -698,7 +712,7 @@
+                 let pred = expr.into();
+                 let rhs_ty = rhs.ty(self.mir.local_decls(), self.tcx);
+                 let rhs_lqt = Refinement::new(rhs_ty.kind.clone(), pred);
+-                ctx.refine(RefinableEntity::from_place(target_place, self.def_id), rhs_lqt);
++                ctx.refine(target, rhs_lqt);
+             }
+             Rvalue::Discriminant(ref p) => {
+                 // need new operator <discr_of> to describe value of target place
+Index: lint_plugin/src/expr.rs
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/lint_plugin/src/expr.rs b/lint_plugin/src/expr.rs
+--- a/lint_plugin/src/expr.rs	
++++ b/lint_plugin/src/expr.rs	
+@@ -258,7 +258,7 @@
+             }
+             TyKind::Int(ty) => {
+                 let size = Size::from_bits(ty.bit_width().unwrap() as u64);
+-                let bits = c.val.try_to_bits(size).unwrap();
++                let bits = c.val.try_to_bits(size).expect(&format!("Cannot get bitsize of const {:?}", c));
+                 Const::Int { bits, size: size.bits() }
+             }
+             t => unimplemented!("{:?}", t)
+@@ -267,6 +267,12 @@
+     }
+ }
+ 
++impl From<RefinableEntity<'tcx>> for Expr<'tcx> {
++    fn from(refinable_entity: RefinableEntity<'tcx>) -> Self {
++        Expr::Var(refinable_entity)
++    }
++}
++
+ mod visitor {
+     use crate::visitor::{Visitable, Visitor};
+     use super::*;
+Index: lint_plugin/src/var.rs
+===================================================================
+diff --git a/lint_plugin/src/var.rs b/lint_plugin/src/var.rs
+new file mode 100644
+--- /dev/null	
++++ b/lint_plugin/src/var.rs	
+@@ -0,0 +1,14 @@
++use rustc::mir::{BasicBlock, Place};
++
++/// Variable in SSA representation implemented on top of Rust MIR
++/// Belongs to some particular MIR (some specific function or const)
++/// [`version`] is unique only in [`bb`] to make increment independent when
++/// analyzing different branches of conditional expression
++struct Var<'tcx> {
++    /// variable this Var is version of
++    place: Place<'tcx>,
++    /// basic block this version is defined in
++    bb: BasicBlock,
++    /// variable version
++    version: usize
++}
+Index: lint_plugin/src/ssa.rs
+===================================================================
+diff --git a/lint_plugin/src/ssa.rs b/lint_plugin/src/ssa.rs
+new file mode 100644
+--- /dev/null	
++++ b/lint_plugin/src/ssa.rs	
+@@ -0,0 +1,87 @@
++use rustc::mir::{BasicBlock, Place};
++use std::collections::{HashMap, HashSet};
++use crate::refinable_entity::RefinableEntity;
++use itertools::Itertools;
++use rustc::hir::def_id::DefId;
++
++type Var<'tcx> = (Place<'tcx>, BasicBlock);
++
++/// Thin wrapper around vector to easily access penultimate item as var version to read from
++// struct VarStack(Vec<RefinableEntity>);
++//
++// impl VarStack {
++//     fn get_version_to_read(&self) -> RefinableEntity {
++//         self.0.iter().dropping_back(1).last()
++//     }
++//
++//     fn get_version_to_write_and_create_new_one(&mut self) -> Option<RefinableEntity> {
++//         let ver = self.0.last()?;
++//         self.0.push()
++//     }
++// }
++type SSAVar<'tcx> = RefinableEntity<'tcx>;
++
++/// Registry that tracks variable versions
++pub struct SSAContext<'tcx> {
++    /// MIR this context belongs to
++    fun_id: DefId,
++    /// All the local variables declared in MIR this contexts belongs to
++    vars: HashSet<Place<'tcx>>,
++    /// Registry of variables that have writes to
++    writes: HashMap<Var<'tcx>, Vec<SSAVar<'tcx>>>,
++}
++
++impl SSAContext<'tcx> {
++    pub fn new(places: impl Iterator<Item=Place<'tcx>>, fun_id: DefId) -> Self {
++        Self {
++            fun_id,
++            vars: places.collect::<HashSet<_>>(),
++            writes: Default::default()
++        }
++    }
++
++    /// We first search for last write in given block
++    /// and lookup [vars] if no such write found
++    /// We rely on the fact that for each variable that had writes in some blocks
++    /// there exist a version of this var in [writes] for each subsequent block, that conjoins them
++    pub fn get_var_to_read(&mut self, place: Place<'tcx>, bb: BasicBlock) -> SSAVar<'tcx> {
++        return self.writes
++            .get(&(place.clone(), bb))
++            .map(|v|
++                v.last()
++                    .expect(&format!("No version on top of stack for var in bb {:?}: {:?} ", bb, place))
++                    .clone()
++            )
++            .unwrap_or_else(|| {
++                if self.vars.insert(place.clone()) {
++                    println!("Inserting place in vars of SSA context: {:?}", &place);
++                }
++                SSAVar::from_place(place, self.fun_id)
++            })
++            // .expect(&format!("No variable for place {:?} in bb {:?}", place, bb))
++        // return self.writes
++        //     .entry((place, bb))
++        //     .or_insert_with(|| vec![])
++        //     .expect(&format!("No variable for place {:?} in bb {:?}", place.clone(), bb))
++        //     .dropping_back(1)
++        //     .last()
++        //     .expect(&format!("No version on top of stack for var in bb {:?}: {:?} ", bb, place.clone()))
++        //     .clone()
++        ;
++    }
++
++    /// Here we should simply add new version on top of stack for given basic block
++    pub fn consume_var_to_write(&mut self, place: Place<'tcx>, bb: BasicBlock) -> SSAVar<'tcx> {
++        let version_to_write = RefinableEntity::from_place(place.clone(), self.fun_id);
++        let versions = self
++            .writes
++            .entry((place, bb))
++            .or_insert_with(|| Vec::new());
++
++        // let version_to_write = versions
++        //     .last()
++        //     .expect(&format!("No version on top of stack for var in bb {:?}: {:?} ", bb, place.clone()));
++        versions.push(version_to_write.clone());
++        version_to_write
++    }
++}
+\ No newline at end of file
+Index: lint_plugin/src/lib.rs
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/lint_plugin/src/lib.rs b/lint_plugin/src/lib.rs
+--- a/lint_plugin/src/lib.rs	
++++ b/lint_plugin/src/lib.rs	
+@@ -1,5 +1,7 @@
+ #![feature(plugin_registrar)]
+ #![feature(box_syntax, rustc_private, box_patterns, entry_insert, try_trait, associated_type_defaults, type_ascription)]
++#![feature(in_band_lifetimes)]
++#![feature(hash_set_entry)]
+ #![allow(unused_variables, unreachable_code, unreachable_patterns, deprecated)]
+ 
+ #[macro_use]
+@@ -54,6 +56,8 @@
+ mod restriction_extractor;
+ mod to_smt;
+ mod smt_ctx;
++mod ssa;
++mod var;
+ 
+ mod typable;
+ declare_lint!(LIQUID_RUST_LINT, Deny, "Liquid rust");
